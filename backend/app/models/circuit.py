@@ -5,10 +5,56 @@ from typing import Any
 from pydantic import BaseModel
 
 
+class GridPoint(BaseModel):
+    gx: int
+    gy: int
+
+
+class CanvasElement(BaseModel):
+    """Validated canvas element as produced by the frontend editor."""
+
+    id: str
+    type: str
+    position: GridPoint | None = None
+    rotation: int | None = None
+    terminalA: GridPoint | None = None
+    terminalB: GridPoint | None = None
+    terminalOut: GridPoint | None = None
+    nodeNames: list[str] | None = None
+    openLoopGain: float | None = None
+    gainBandwidth: float | None = None
+    inputResistance: float | None = None
+    outputResistance: float | None = None
+    outputMin: float | None = None
+    outputMax: float | None = None
+    slewRate: float | None = None
+    inputOffset: float | None = None
+    value: float
+    label: str
+    sourceWaveform: str = "dc"
+    acAmplitude: float | None = None
+    acPhase: float = 0.0
+    sineFrequency: float | None = None
+    sineAmplitude: float | None = None
+    sinePhase: float | None = None
+    sineOffset: float | None = None
+    pulseLow: float | None = None
+    pulseDelay: float | None = None
+    pulseRise: float | None = None
+    pulseFall: float | None = None
+    pulsePeriod: float | None = None
+    pulseWidth: float | None = None
+
+
+class CanvasWire(BaseModel):
+    id: str
+    points: list[GridPoint]
+
+
 class SaveCircuitRequest(BaseModel):
     name: str
-    elements: dict[str, Any]
-    wires: dict[str, Any]
+    elements: dict[str, CanvasElement]
+    wires: dict[str, CanvasWire]
     ground_element_id: str | None = None
 
 

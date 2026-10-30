@@ -27,16 +27,17 @@ def list_circuits():
 def create_circuit(body: SaveCircuitRequest):
     cid = str(uuid.uuid4())
     now = _now()
+    data = body.model_dump(mode="json")
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO circuits (id, name, elements, wires, ground_element_id, created_at, updated_at)"
             " VALUES (?,?,?,?,?,?,?)",
-            (cid, body.name, json.dumps(body.elements), json.dumps(body.wires),
+            (cid, body.name, json.dumps(data["elements"]), json.dumps(data["wires"]),
              body.ground_element_id, now, now),
         )
     return CircuitDetail(
         id=cid, name=body.name,
-        elements=body.elements, wires=body.wires,
+        elements=data["elements"], wires=data["wires"],
         ground_element_id=body.ground_element_id,
         created_at=now, updated_at=now,
     )
@@ -61,11 +62,12 @@ def get_circuit(cid: str):
 @router.put("/{cid}", response_model=CircuitDetail)
 def update_circuit(cid: str, body: SaveCircuitRequest):
     now = _now()
+    data = body.model_dump(mode="json")
     with get_conn() as conn:
         cur = conn.execute(
             "UPDATE circuits SET name=?, elements=?, wires=?, ground_element_id=?, updated_at=?"
             " WHERE id=?",
-            (body.name, json.dumps(body.elements), json.dumps(body.wires),
+            (body.name, json.dumps(data["elements"]), json.dumps(data["wires"]),
              body.ground_element_id, now, cid),
         )
         if cur.rowcount == 0:
@@ -73,7 +75,7 @@ def update_circuit(cid: str, body: SaveCircuitRequest):
         row = conn.execute("SELECT created_at FROM circuits WHERE id=?", (cid,)).fetchone()
     return CircuitDetail(
         id=cid, name=body.name,
-        elements=body.elements, wires=body.wires,
+        elements=data["elements"], wires=data["wires"],
         ground_element_id=body.ground_element_id,
         created_at=row["created_at"], updated_at=now,
     )
