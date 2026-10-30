@@ -38,7 +38,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   runSimulation: async () => {
     const { elements, nodes } = useCircuitStore.getState();
     const { settings } = get();
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, result: null, signals: [] });
 
     try {
       const req = buildNetlist(elements, nodes, settings);
@@ -50,7 +50,9 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.detail ?? "Simulation failed");
+        throw new Error(Array.isArray(err.detail)
+          ? err.detail.map((item: { msg: string }) => item.msg).join("; ")
+          : err.detail ?? "Simulation failed");
       }
 
       const raw = await res.json();

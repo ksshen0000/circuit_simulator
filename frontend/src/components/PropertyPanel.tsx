@@ -24,7 +24,7 @@ export function PropertyPanel() {
       <input
         type="number"
         step={step}
-        value={el[key] as number}
+        value={(el[key] as number | undefined) ?? ""}
         onChange={(e) => updateElement(id, { [key]: parseFloat(e.target.value) })}
         style={{ width: "100%", padding: "3px 6px", border: "1px solid #e2e8f0", borderRadius: 4, fontSize: 12 }}
       />
@@ -53,10 +53,12 @@ export function PropertyPanel() {
     <div style={{ padding: 12, fontSize: 12 }}>
       <div style={{ fontWeight: 600, marginBottom: 10, color: "#1e293b" }}>{el.label} — {el.type}</div>
 
-      {el.type !== "ground" && numField(VALUE_LABELS[el.type] ?? "值", "value", 0.001)}
+      {el.type !== "ground" && el.type !== "opamp" && numField(VALUE_LABELS[el.type] ?? "值", "value", 0.001)}
 
       {(el.type === "voltage_source" || el.type === "current_source") && (
         <>
+          {numField("AC 小信号幅值", "acAmplitude", 0.1)}
+          {numField("AC 相位 (°)", "acPhase", 1)}
           {selectField("波形", "sourceWaveform", ["dc", "sine", "pulse", "step"])}
           {el.sourceWaveform === "sine" && (
             <>
@@ -73,6 +75,18 @@ export function PropertyPanel() {
           )}
         </>
       )}
+
+      {el.type === "opamp" && <>
+        <p style={{ color: "#64748b", fontSize: 11 }}>左上 +，左下 −，右侧输出。电源用对地输出上下限表示。</p>
+        {numField("开环增益 (V/V)", "openLoopGain")}
+        {numField("增益带宽积 (Hz)", "gainBandwidth")}
+        {numField("差分输入电阻 (Ω)", "inputResistance")}
+        {numField("输出电阻 (Ω)", "outputResistance")}
+        {numField("输出下限 (V)", "outputMin")}
+        {numField("输出上限 (V)", "outputMax")}
+        {numField("压摆率 (V/s)", "slewRate")}
+        {numField("输入失调 (V)", "inputOffset")}
+      </>}
 
       {/* Simulation results for this element */}
       {result && (

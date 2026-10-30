@@ -10,7 +10,8 @@ export type ComponentType =
   | "inductor"
   | "voltage_source"
   | "current_source"
-  | "ground";
+  | "ground"
+  | "opamp";
 
 export type SourceWaveform = "dc" | "sine" | "pulse" | "step";
 
@@ -21,6 +22,16 @@ export interface CircuitElement {
   rotation: Rotation;
   terminalA: GridPoint;  // absolute grid position of pin A
   terminalB: GridPoint;  // absolute grid position of pin B (ground has only A)
+  terminalOut?: GridPoint;
+  nodeNames?: string[]; // Named nets imported from SPICE; same name means connected.
+  openLoopGain?: number;
+  gainBandwidth?: number;
+  inputResistance?: number;
+  outputResistance?: number;
+  outputMin?: number;
+  outputMax?: number;
+  slewRate?: number;
+  inputOffset?: number;
   value: number;         // SI: Ω / F / H / V / A
   label: string;
   sourceWaveform: SourceWaveform;
@@ -72,4 +83,20 @@ export function gpEqual(a: GridPoint, b: GridPoint): boolean {
 
 export function gpKey(p: GridPoint): string {
   return `${p.gx},${p.gy}`;
+}
+
+// Opamp A = non-inverting input, B = inverting input, third pin = output.
+export function opampTerminals(center: GridPoint, rotation: Rotation): [GridPoint, GridPoint, GridPoint] {
+  const rotate = (x: number, y: number): GridPoint => {
+    const angle = rotation * Math.PI / 180;
+    return { gx: center.gx + Math.round(x * Math.cos(angle) - y * Math.sin(angle)),
+      gy: center.gy + Math.round(x * Math.sin(angle) + y * Math.cos(angle)) };
+  };
+  return [rotate(-2, -1), rotate(-2, 1), rotate(2, 0)];
+}
+
+export function elementTerminals(el: CircuitElement): GridPoint[] {
+  if (el.type === "ground") return [el.terminalA];
+  if (el.type === "opamp") return opampTerminals(el.position, el.rotation);
+  return [el.terminalA, el.terminalB];
 }

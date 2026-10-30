@@ -1,0 +1,36 @@
+{
+  "elements": [
+    {
+      "id": "V1",
+      "type": "voltage_source",
+      "node_a": "in",
+      "node_b": "GND",
+      "value": 0.1,
+      "ac_amplitude": 1.0
+    },
+    {
+      "id": "U1",
+      "type": "opamp",
+      "node_a": "in",
+      "node_b": "fb",
+      "node_out": "out"
+    },
+    {
+      "id": "Rf",
+      "type": "resistor",
+      "node_a": "out",
+      "node_b": "fb",
+      "value": 9000.0
+    },
+    {
+      "id": "Rg",
+      "type": "resistor",
+      "node_a": "fb",
+      "node_b": "GND",
+      "value": 1000.0
+    }
+  ],
+  "settings": {
+    "mode": "dc"
+  }
+}

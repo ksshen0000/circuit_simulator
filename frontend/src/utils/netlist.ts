@@ -1,4 +1,4 @@
-import type { CircuitElement, CircuitNode } from "../types/circuit";
+import { elementTerminals, type CircuitElement, type CircuitNode } from "../types/circuit";
 import type { SimulationSettings } from "../types/simulation";
 import { pointToNode } from "./graphUtils";
 
@@ -7,6 +7,15 @@ export interface NetlistElementDTO {
   type: string;
   node_a: string;
   node_b: string;
+  node_out?: string;
+  open_loop_gain?: number;
+  gain_bandwidth?: number;
+  input_resistance?: number;
+  output_resistance?: number;
+  output_min?: number;
+  output_max?: number;
+  slew_rate?: number;
+  input_offset?: number;
   value: number;
   ac_amplitude?: number;
   ac_phase: number;
@@ -48,14 +57,24 @@ export function buildNetlist(
   const dtos: NetlistElementDTO[] = [];
 
   for (const el of Object.values(elements)) {
-    const nodeA = pointToNode(el.terminalA, nodes) ?? "?";
-    const nodeB = el.type === "ground" ? "GND" : (pointToNode(el.terminalB, nodes) ?? "?");
+    const pins = elementTerminals(el);
+    const nodeA = pointToNode(pins[0], nodes) ?? "?";
+    const nodeB = el.type === "ground" ? "GND" : (pointToNode(pins[1], nodes) ?? "?");
 
     dtos.push({
       id: el.label,
       type: el.type,
       node_a: nodeA,
       node_b: nodeB,
+      node_out: el.type === "opamp" ? pointToNode(pins[2], nodes) ?? "?" : undefined,
+      open_loop_gain: el.openLoopGain,
+      gain_bandwidth: el.gainBandwidth,
+      input_resistance: el.inputResistance,
+      output_resistance: el.outputResistance,
+      output_min: el.outputMin,
+      output_max: el.outputMax,
+      slew_rate: el.slewRate,
+      input_offset: el.inputOffset,
       value: el.value,
       ac_amplitude: el.acAmplitude,
       ac_phase: el.acPhase,

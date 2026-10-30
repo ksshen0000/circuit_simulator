@@ -8,7 +8,6 @@ Caller is responsible for choosing real vs complex dtype (pass dtype=complex for
 """
 from __future__ import annotations
 import numpy as np
-from typing import Optional
 
 
 def _idx(node: str, node_index: dict[str, int]) -> int:
@@ -28,7 +27,7 @@ def build_mna_dc(
     Returns (A, z) real arrays.
     t: evaluate time-varying sources at this time (use t<0 for t=0- initial conditions).
     """
-    v_sources: list[tuple[str, str, float]] = []
+    v_sources: list[tuple[str, str, float, str]] = []
     for el in elements:
         if el.type == "inductor":
             v_sources.append((el.node_a, el.node_b, 0.0, el.id))
@@ -51,9 +50,9 @@ def build_mna_dc(
         elif el.type == "current_source":
             val = _eval_source(el, t)
             if a >= 0:
-                z[a] += val
+                z[a] -= val
             if b >= 0:
-                z[b] -= val
+                z[b] += val
 
         # capacitor: open → no stamp
         # inductor / voltage_source: handled below
@@ -81,7 +80,7 @@ def build_mna_ac(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Build complex MNA for AC analysis at angular frequency omega."""
     v_sources = [
-        (el.node_a, el.node_b, el.ac_amplitude or el.value, el.ac_phase, el.id)
+        (el.node_a, el.node_b, el.ac_amplitude if el.ac_amplitude is not None else el.value, el.ac_phase, el.id)
         for el in elements
         if el.type == "voltage_source"
     ]
@@ -110,9 +109,9 @@ def build_mna_ac(
             amp = el.ac_amplitude if el.ac_amplitude is not None else el.value
             phasor = amp * np.exp(1j * np.radians(el.ac_phase))
             if a >= 0:
-                z[a] += phasor
+                z[a] -= phasor
             if b >= 0:
-                z[b] -= phasor
+                z[b] += phasor
 
     for k, (na, nb, amp, phase_deg, _) in enumerate(v_sources):
         a = _idx(na, node_index)
@@ -137,6 +136,7 @@ def build_mna_transient(
     t: float,
     h: float,
     state: dict,
+    method: str = "trapezoidal",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Build real MNA for one transient timestep using trapezoidal companion models.
 
@@ -145,6 +145,7 @@ def build_mna_transient(
       "ind_<id>": {"v": voltage_across, "i": current_through},
     }
     """
+    factor = 1.0 if method == "euler" else 2.0
     v_sources = [
         el for el in elements
         if el.type == "voltage_source"
@@ -165,10 +166,10 @@ def build_mna_transient(
         elif el.type == "capacitor":
             # Trapezoidal companion: Req = h/(2C), Ieq = i_prev + (2C/h)*v_prev
             C = el.value
-            Req = h / (2.0 * C)
+            Req = h / (factor * C)
             g_eq = 1.0 / Req
             st = state.get(f"cap_{el.id}", {"v": 0.0, "i": 0.0})
-            Ieq = st["i"] + (2.0 * C / h) * st["v"]
+            Ieq = (st["i"] if factor == 2 else 0.0) + (factor * C / h) * st["v"]
             _stamp_conductance(A, a, b, g_eq)
             if a >= 0:
                 z[a] += Ieq
@@ -180,10 +181,10 @@ def build_mna_transient(
             # Inductor: i_{k+1} = G*v_{k+1} + Ieq  → current source flows a→b
             # (opposite sign to capacitor's b→a source)
             L = el.value
-            Req = 2.0 * L / h
+            Req = factor * L / h
             g_eq = 1.0 / Req
             st = state.get(f"ind_{el.id}", {"v": 0.0, "i": 0.0})
-            Ieq = st["i"] + (h / (2.0 * L)) * st["v"]
+            Ieq = st["i"] + (h / (factor * L)) * st["v"] if factor == 2 else st["i"]
             _stamp_conductance(A, a, b, g_eq)
             if a >= 0:
                 z[a] -= Ieq
@@ -193,9 +194,9 @@ def build_mna_transient(
         elif el.type == "current_source":
             val = _eval_source(el, t)
             if a >= 0:
-                z[a] += val
+                z[a] -= val
             if b >= 0:
-                z[b] -= val
+                z[b] += val
 
     for k, el in enumerate(v_sources):
         a = _idx(el.node_a, node_index)

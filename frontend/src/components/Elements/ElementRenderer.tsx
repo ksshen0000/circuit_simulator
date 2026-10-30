@@ -1,10 +1,11 @@
 import React, { memo } from "react";
-import { GRID_SIZE, type CircuitElement, type Point } from "../../types/circuit";
+import { elementTerminals, GRID_SIZE, type CircuitElement, type Point } from "../../types/circuit";
 import { ResistorSymbol } from "./ResistorSymbol";
 import { CapacitorSymbol } from "./CapacitorSymbol";
 import { InductorSymbol } from "./InductorSymbol";
 import { VoltageSourceSymbol } from "./VoltageSourceSymbol";
 import { CurrentSourceSymbol } from "./CurrentSourceSymbol";
+import { OpampSymbol } from "./OpampSymbol";
 import { GroundSymbol } from "./GroundSymbol";
 
 interface Props {
@@ -23,6 +24,7 @@ const SYMBOL_MAP: Record<string, React.ComponentType<{ isAC?: boolean }>> = {
   voltage_source: VoltageSourceSymbol,
   current_source: CurrentSourceSymbol,
   ground: GroundSymbol,
+  opamp: OpampSymbol,
 };
 
 export const ElementRenderer = memo(function ElementRenderer({
@@ -53,6 +55,18 @@ export const ElementRenderer = memo(function ElementRenderer({
         />
       )}
       <Symbol isAC={element.sourceWaveform === "sine"} />
+      {element.nodeNames && elementTerminals(element).map((pin, i) => {
+        const dx = (pin.gx - element.position.gx) * GRID_SIZE;
+        const dy = (pin.gy - element.position.gy) * GRID_SIZE;
+        const angle = -element.rotation * Math.PI / 180;
+        const x = dx * Math.cos(angle) - dy * Math.sin(angle);
+        const y = dx * Math.sin(angle) + dy * Math.cos(angle);
+        return <g key={i}>
+          <circle cx={x} cy={y} r={3} fill="#fff" stroke="currentColor" />
+          <text x={x + (x < 0 ? -5 : 5)} y={y + 4} textAnchor={x < 0 ? "end" : "start"}
+            fontSize={10} fill="#0369a1" stroke="none">{element.nodeNames?.[i]}</text>
+        </g>;
+      })}
       {/* Label */}
       <text
         x={0} y={element.type === "ground" ? 32 : -28}

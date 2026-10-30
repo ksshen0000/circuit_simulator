@@ -1,6 +1,8 @@
 import { useUIStore } from "../../store/uiStore";
 import { useCircuitStore } from "../../store/circuitStore";
 import type { ComponentType } from "../../types/circuit";
+import { SpicePanel } from "./SpicePanel";
+import { TemplatePanel } from "./TemplatePanel";
 import { SaveLoadPanel } from "./SaveLoadPanel";
 
 const COMPONENTS: { type: ComponentType; label: string; icon: string }[] = [
@@ -9,6 +11,7 @@ const COMPONENTS: { type: ComponentType; label: string; icon: string }[] = [
   { type: "inductor", label: "电感", icon: "L" },
   { type: "voltage_source", label: "电压源", icon: "V" },
   { type: "current_source", label: "电流源", icon: "I" },
+  { type: "opamp", label: "运算放大器", icon: "▷" },
   { type: "ground", label: "接地", icon: "⏚" },
 ];
 
@@ -64,6 +67,9 @@ export function Toolbar() {
 
       <div style={{ width: 1, height: 24, background: "#e2e8f0", margin: "0 4px" }} />
       <SaveLoadPanel />
+      <div style={{ width: 1, height: 24, background: "#e2e8f0", margin: "0 4px" }} />
+      <TemplatePanel />
+      <SpicePanel />
 
       <div style={{ marginLeft: "auto", fontSize: 11, color: "#94a3b8" }}>
         R=旋转 · Del=删除 · Esc=取消

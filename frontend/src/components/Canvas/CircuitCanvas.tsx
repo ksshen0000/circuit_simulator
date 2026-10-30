@@ -4,7 +4,7 @@ import { useUIStore } from "../../store/uiStore";
 import { useSimulationStore } from "../../store/simulationStore";
 import { ElementRenderer } from "../Elements/ElementRenderer";
 import {
-  GRID_SIZE, type GridPoint, type Point, screenToGrid, gridToScreen, gpKey, gpEqual,
+  elementTerminals, GRID_SIZE, type GridPoint, type Point, screenToGrid, gridToScreen, gpKey, gpEqual,
   type CircuitElement, type CircuitNode,
 } from "../../types/circuit";
 import type { WaveformSignal } from "../../types/simulation";
@@ -43,6 +43,8 @@ export function CircuitCanvas() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         if (document.activeElement?.tagName === "INPUT") return;
         deleteSelected();
@@ -320,7 +322,7 @@ function nodeRepresentativePoint(
   if (!node || node.gridPoints.length === 0) return null;
   for (const el of Object.values(elements)) {
     if (el.type === "ground") continue;
-    for (const term of [el.terminalA, el.terminalB]) {
+    for (const term of elementTerminals(el)) {
       if (node.gridPoints.some((gp) => gp.gx === term.gx && gp.gy === term.gy)) {
         return term;
       }

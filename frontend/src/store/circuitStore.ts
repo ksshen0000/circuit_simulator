@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { v4 as uuid } from "uuid";
 import {
   type CircuitElement, type Wire, type CircuitNode, type ComponentType, type Rotation,
-  type GridPoint, terminalPositions,
+  type GridPoint, terminalPositions, opampTerminals,
 } from "../types/circuit";
 import { computeNodes } from "../utils/graphUtils";
 
@@ -50,6 +50,7 @@ const DEFAULT_VALUES: Record<ComponentType, number> = {
   voltage_source: 5,
   current_source: 0.001,
   ground: 0,
+  opamp: 0,
 };
 
 const LABEL_PREFIXES: Record<ComponentType, string> = {
@@ -59,6 +60,7 @@ const LABEL_PREFIXES: Record<ComponentType, string> = {
   voltage_source: "V",
   current_source: "I",
   ground: "GND",
+  opamp: "U",
 };
 
 export const useCircuitStore = create<CircuitStore>((set, get) => ({
@@ -81,13 +83,15 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
     const id = uuid();
     const rotation: Rotation = 0;
     // Ground's connection point is at the element center itself (symbol draws downward)
-    const [termA, termB] = type === "ground"
+    const [termA, termB, termOut] = type === "ground"
       ? [center, center]
-      : terminalPositions(center, rotation);
+      : type === "opamp" ? opampTerminals(center, rotation) : terminalPositions(center, rotation);
 
     const el: CircuitElement = {
       id, type, position: center, rotation,
-      terminalA: termA, terminalB: termB,
+      terminalA: termA, terminalB: termB, terminalOut: termOut,
+      ...(type === "opamp" ? { openLoopGain: 1e5, gainBandwidth: 1e6, inputResistance: 1e9,
+        outputResistance: 75, outputMin: -13.5, outputMax: 13.5, slewRate: 5e5, inputOffset: 0 } : {}),
       value: DEFAULT_VALUES[type],
       label,
       sourceWaveform: "dc",
@@ -107,11 +111,11 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
     set((s) => {
       const el = s.elements[id];
       if (!el) return s;
-      const [termA, termB] = el.type === "ground"
+      const [termA, termB, termOut] = el.type === "ground"
         ? [newCenter, newCenter]
-        : terminalPositions(newCenter, el.rotation);
+        : el.type === "opamp" ? opampTerminals(newCenter, el.rotation) : terminalPositions(newCenter, el.rotation);
       return {
-        elements: { ...s.elements, [id]: { ...el, position: newCenter, terminalA: termA, terminalB: termB } },
+        elements: { ...s.elements, [id]: { ...el, position: newCenter, terminalA: termA, terminalB: termB, terminalOut: termOut } },
       };
     });
     get().recomputeNodes();
@@ -122,9 +126,9 @@ export const useCircuitStore = create<CircuitStore>((set, get) => ({
       const el = s.elements[id];
       if (!el) return s;
       const newRot = ((el.rotation + 90) % 360) as Rotation;
-      const [termA, termB] = terminalPositions(el.position, newRot);
+      const [termA, termB, termOut] = el.type === "ground" ? [el.position, el.position] : el.type === "opamp" ? opampTerminals(el.position, newRot) : terminalPositions(el.position, newRot);
       return {
-        elements: { ...s.elements, [id]: { ...el, rotation: newRot, terminalA: termA, terminalB: termB } },
+        elements: { ...s.elements, [id]: { ...el, rotation: newRot, terminalA: termA, terminalB: termB, terminalOut: termOut } },
       };
     });
     get().recomputeNodes();

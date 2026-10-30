@@ -1,4 +1,4 @@
-import { type CircuitElement, type CircuitNode, type Wire, gpKey, type GridPoint } from "../types/circuit";
+import { elementTerminals, type CircuitElement, type CircuitNode, type Wire, gpKey, type GridPoint } from "../types/circuit";
 
 class UnionFind {
   private parent: Map<string, string> = new Map();
@@ -78,25 +78,46 @@ export function computeNodes(
   // Register all element terminals. If a terminal shares a grid key with a wire
   // point already in the union-find, uf.find() returns the same root automatically.
   for (const el of Object.values(elements)) {
-    uf.find(gpKey(el.terminalA));
-    if (el.type !== "ground") uf.find(gpKey(el.terminalB));
+    for (const pin of elementTerminals(el)) uf.find(gpKey(pin));
   }
 
-  // Find which root corresponds to the ground element's terminal
-  let groundRoot: string | null = null;
+  // Named nets retain connectivity without requiring crossing auto-routed wires.
+  const namedPins = new Map<string, string>();
+  for (const el of Object.values(elements)) {
+    elementTerminals(el).forEach((pin, i) => {
+      const name = el.nodeNames?.[i];
+      if (!name) return;
+      const key = name === "0" || name.toUpperCase() === "GND" ? "GND" : name.toUpperCase();
+      const previous = namedPins.get(key);
+      if (previous) uf.union(gpKey(pin), previous);
+      else namedPins.set(key, gpKey(pin));
+    });
+  }
+  let groundPin = namedPins.get("GND");
   if (groundElementId && elements[groundElementId]) {
-    groundRoot = uf.find(gpKey(elements[groundElementId].terminalA));
+    const pin = gpKey(elements[groundElementId].terminalA);
+    if (groundPin) uf.union(pin, groundPin);
+    groundPin = pin;
   }
-
-  const groups = uf.groups();
+  for (const el of Object.values(elements)) {
+    if (el.type !== "ground") continue;
+    const pin = gpKey(el.terminalA);
+    if (groundPin) uf.union(pin, groundPin);
+    else groundPin = pin;
+  }
+  const groundRoot = groundPin ? uf.find(groundPin) : null;
+  const rootNames = new Map<string, string>();
+  for (const [name, pin] of namedPins) rootNames.set(uf.find(pin), name);
+  const reserved = new Set(namedPins.keys());
   const nodes: Record<string, CircuitNode> = {};
   let nodeCounter = 1;
-
-  for (const [root, keys] of groups.entries()) {
-    const isGnd = root === groundRoot;
-    const id = isGnd ? "GND" : `N${nodeCounter++}`;
-    const gridPoints: GridPoint[] = keys.map((k) => {
-      const [gx, gy] = k.split(",").map(Number);
+  for (const [root, keys] of uf.groups()) {
+    let id = root === groundRoot ? "GND" : rootNames.get(root);
+    if (!id) {
+      do { id = `N${nodeCounter++}`; } while (reserved.has(id));
+    }
+    const gridPoints = keys.map((key): GridPoint => {
+      const [gx, gy] = key.split(",").map(Number);
       return { gx, gy };
     });
     nodes[id] = { id, gridPoints };
@@ -132,8 +153,7 @@ export function findJunctions(
     inc(wire.points[wire.points.length - 1]);
   }
   for (const el of Object.values(elements)) {
-    inc(el.terminalA);
-    if (el.type !== "ground") inc(el.terminalB);
+    for (const pin of elementTerminals(el)) inc(pin);
   }
 
   const junctions: GridPoint[] = [];

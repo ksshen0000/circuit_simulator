@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
-from .mna import build_mna_dc, _idx
+from .mna import build_mna_dc, _eval_source
+from .opamp import solve, output_current
 
 
 def dc_solve(elements: list, node_index: dict[str, int], t: float = 0.0) -> tuple[dict, dict]:
@@ -10,10 +11,7 @@ def dc_solve(elements: list, node_index: dict[str, int], t: float = 0.0) -> tupl
 
     A, z = build_mna_dc(elements, node_index, n, t=t)
 
-    try:
-        x = np.linalg.solve(A, z)
-    except np.linalg.LinAlgError as exc:
-        raise ValueError(f"Singular matrix: {exc}") from exc
+    x = solve(A, z, elements, node_index)
 
     node_voltages = {node: float(x[idx]) for node, idx in node_index.items()}
 
@@ -33,6 +31,9 @@ def dc_solve(elements: list, node_index: dict[str, int], t: float = 0.0) -> tupl
             branch_currents[el.id] = 0.0  # open in DC
 
         elif el.type == "current_source":
-            branch_currents[el.id] = el.value
+            branch_currents[el.id] = float(_eval_source(el, t))
+
+        elif el.type == "opamp":
+            branch_currents[el.id] = float(output_current(x, elements, el))
 
     return node_voltages, branch_currents

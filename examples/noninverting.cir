@@ -1,0 +1,11 @@
+* Non-inverting amplifier, gain 10
+* CS_OPAMP is this application's built-in model.
+* External simulators require a matching .SUBCKT model library.
+V1 in 0 DC 0.1 AC 1
+XU1 in feedback out CS_OPAMP A0=100k GBW=1meg RIN=1g ROUT=75
++ VMIN=-13.5 VMAX=13.5 SR=500k VOS=0
+R1 out feedback 9k
+R2 feedback 0 1k
+RL out 0 10k
+.op
+.end

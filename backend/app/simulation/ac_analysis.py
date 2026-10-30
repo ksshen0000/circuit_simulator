@@ -1,6 +1,8 @@
 from __future__ import annotations
 import numpy as np
-from .mna import build_mna_ac, _idx
+from .mna import build_mna_ac
+from .opamp import solve, output_current
+from .dc_analysis import dc_solve
 
 
 def ac_sweep(
@@ -9,6 +11,14 @@ def ac_sweep(
     settings,
 ) -> tuple[list[float], dict[str, list[float]], dict[str, list[float]], dict[str, list[float]], dict[str, list[float]]]:
     """Return (freqs, node_mag, node_phase, branch_mag, branch_phase)."""
+    # Small-signal analysis is only meaningful around an unsaturated bias point.
+    if any(e.type == "opamp" for e in elements):
+        bias, currents = dc_solve(elements, node_index)
+        for el in elements:
+            if el.type == "opamp":
+                internal = bias.get(el.node_out, 0) - el.output_resistance * currents[el.id]
+                if internal <= el.output_min + 1e-8 or internal >= el.output_max - 1e-8:
+                    raise ValueError(f"{el.id} is saturated at DC; adjust source bias before AC analysis")
     n = len(node_index)
     v_sources = [e for e in elements if e.type == "voltage_source"]
 
@@ -30,10 +40,7 @@ def ac_sweep(
         omega = 2 * np.pi * f
         A, z = build_mna_ac(elements, node_index, n, omega)
 
-        try:
-            x = np.linalg.solve(A, z)
-        except np.linalg.LinAlgError:
-            x = np.zeros(n + len(v_sources), dtype=complex)
+        x = solve(A, z, elements, node_index, omega=omega)
 
         for node, idx in node_index.items():
             node_mag[node].append(float(np.abs(x[idx])))
@@ -53,7 +60,9 @@ def ac_sweep(
             b_v = x[node_index[el.node_b]] if el.node_b in node_index else 0
             vab = a_v - b_v
 
-            if el.type == "resistor":
+            if el.type == "opamp":
+                i = output_current(x, elements, el)
+            elif el.type == "resistor":
                 i = vab / el.value
             elif el.type == "capacitor" and omega != 0:
                 i = vab * (1j * omega * el.value)

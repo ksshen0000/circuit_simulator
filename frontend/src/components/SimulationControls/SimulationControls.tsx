@@ -1,12 +1,10 @@
-import { useState } from "react";
 import { useSimulationStore } from "../../store/simulationStore";
 
 export function SimulationControls() {
   const { settings, setSettings, runSimulation, isLoading, error } = useSimulationStore();
-  const [mode, setMode] = useState<"dc" | "ac" | "transient">(settings.mode);
+  const mode = settings.mode;
 
   const updateMode = (m: "dc" | "ac" | "transient") => {
-    setMode(m);
     if (m === "dc") setSettings({ mode: "dc" });
     else if (m === "ac") setSettings({ mode: "ac", fStart: 1, fStop: 1e6, pointsPerDecade: 20, sweepType: "log" });
     else setSettings({ mode: "transient", tStop: 0.01, tStep: 1e-5, tStart: 0, method: "trapezoidal" });
@@ -64,6 +62,11 @@ export function SimulationControls() {
         <>
           {field("结束时间", settings.tStop, (v) => setSettings({ ...settings, tStop: v }))}
           {field("步长", settings.tStep, (v) => setSettings({ ...settings, tStep: v }))}
+          <select aria-label="积分方法" value={settings.method}
+            onChange={(e) => setSettings({ ...settings, method: e.target.value as "euler" | "trapezoidal" })}>
+            <option value="trapezoidal">梯形积分</option>
+            <option value="euler">隐式 Euler</option>
+          </select>
         </>
       )}
 
