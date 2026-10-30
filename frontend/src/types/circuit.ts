@@ -38,6 +38,13 @@ export interface CircuitElement {
   acAmplitude?: number;
   acPhase: number;       // degrees
   sineFrequency?: number;
+  sineAmplitude?: number;
+  sinePhase?: number;
+  sineOffset?: number;
+  pulseLow?: number;
+  pulseDelay?: number;
+  pulseRise?: number;
+  pulseFall?: number;
   pulsePeriod?: number;
   pulseWidth?: number;
 }

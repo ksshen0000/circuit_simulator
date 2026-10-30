@@ -25,7 +25,7 @@ export function PropertyPanel() {
         type="number"
         step={step}
         value={(el[key] as number | undefined) ?? ""}
-        onChange={(e) => updateElement(id, { [key]: parseFloat(e.target.value) })}
+        onChange={(e) => updateElement(id, { [key]: e.target.value === "" ? undefined : Number(e.target.value) })}
         style={{ width: "100%", padding: "3px 6px", border: "1px solid #e2e8f0", borderRadius: 4, fontSize: 12 }}
       />
     </div>
@@ -46,7 +46,7 @@ export function PropertyPanel() {
 
   const VALUE_LABELS: Record<string, string> = {
     resistor: "电阻 (Ω)", capacitor: "电容 (F)", inductor: "电感 (H)",
-    voltage_source: "电压 (V)", current_source: "电流 (A)", ground: "-",
+    voltage_source: "DC 电压 / 阶跃高值 (V)", current_source: "DC 电流 / 阶跃高值 (A)", ground: "-",
   };
 
   return (
@@ -62,15 +62,20 @@ export function PropertyPanel() {
           {selectField("波形", "sourceWaveform", ["dc", "sine", "pulse", "step"])}
           {el.sourceWaveform === "sine" && (
             <>
-              {numField("幅值", "acAmplitude", 0.1)}
+              {numField("瞬态幅值（留空沿用 AC）", "sineAmplitude", 0.1)}
+              {numField("瞬态偏移", "sineOffset", 0.1)}
               {numField("频率 (Hz)", "sineFrequency", 1)}
-              {numField("相位 (°)", "acPhase", 1)}
+              {numField("瞬态相位（留空沿用 AC）", "sinePhase", 1)}
             </>
           )}
           {el.sourceWaveform === "pulse" && (
             <>
               {numField("周期 (s)", "pulsePeriod")}
-              {numField("脉宽 (s)", "pulseWidth")}
+              {numField("高电平宽度 (s)", "pulseWidth")}
+              {numField("低电平", "pulseLow")}
+              {numField("延迟 (s)", "pulseDelay")}
+              {numField("上升时间 (s)", "pulseRise")}
+              {numField("下降时间 (s)", "pulseFall")}
             </>
           )}
         </>

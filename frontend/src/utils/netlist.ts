@@ -21,6 +21,13 @@ export interface NetlistElementDTO {
   ac_phase: number;
   source_waveform: string;
   sine_frequency?: number;
+  sine_amplitude?: number;
+  sine_phase?: number;
+  sine_offset?: number;
+  pulse_low?: number;
+  pulse_delay?: number;
+  pulse_rise?: number;
+  pulse_fall?: number;
   pulse_period?: number;
   pulse_width?: number;
 }
@@ -80,6 +87,13 @@ export function buildNetlist(
       ac_phase: el.acPhase,
       source_waveform: el.sourceWaveform,
       sine_frequency: el.sineFrequency,
+      sine_amplitude: el.sineAmplitude,
+      sine_phase: el.sinePhase,
+      sine_offset: el.sineOffset,
+      pulse_low: el.pulseLow,
+      pulse_delay: el.pulseDelay,
+      pulse_rise: el.pulseRise,
+      pulse_fall: el.pulseFall,
       pulse_period: el.pulsePeriod,
       pulse_width: el.pulseWidth,
     });
