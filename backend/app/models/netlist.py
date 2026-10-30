@@ -5,6 +5,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+MAX_ELEMENTS = 500
+MAX_NODES = 5000
+
 
 class NetlistElement(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
@@ -114,3 +117,11 @@ class SimulateRequest(BaseModel):
     elements: list[NetlistElement]
     ground_node: str = "GND"
     settings: SimSettings
+
+    @model_validator(mode="after")
+    def validate_size(self):
+        if not self.elements:
+            raise ValueError("Circuit must contain at least one element")
+        if len(self.elements) > MAX_ELEMENTS:
+            raise ValueError(f"At most {MAX_ELEMENTS} elements are allowed")
+        return self

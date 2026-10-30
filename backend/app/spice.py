@@ -6,7 +6,7 @@ import re
 
 from pydantic import ValidationError
 
-from .models.netlist import ACSettings, DCSettings, NetlistElement, SimulateRequest, TransientSettings
+from .models.netlist import MAX_ELEMENTS, ACSettings, DCSettings, NetlistElement, SimulateRequest, TransientSettings
 from .models.spice import ParsedSpice
 
 SCALES = dict(t=1e12, g=1e9, meg=1e6, k=1e3, m=1e-3, u=1e-6, n=1e-9, p=1e-12, f=1e-15, mil=25.4e-6)
@@ -162,8 +162,8 @@ def parse_spice(text: str) -> ParsedSpice:
             else:
                 if command in labels:
                     raise ValueError(f"元件名称重复：{tokens[0]}")
-                if len(elements) >= 500:
-                    raise ValueError("最多支持 500 个元件")
+                if len(elements) >= MAX_ELEMENTS:
+                    raise ValueError(f"最多支持 {MAX_ELEMENTS} 个元件")
                 elements.append(_element(tokens))
                 labels.add(command)
         except ValidationError as exc:

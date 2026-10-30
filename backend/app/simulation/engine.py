@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-from ..models.netlist import SimulateRequest
+from ..models.netlist import MAX_NODES, SimulateRequest
 from ..models.results import SimulationResult
 from .ac_analysis import ac_sweep
 from .dc_analysis import dc_solve
@@ -29,6 +29,8 @@ def run_simulation(req: SimulateRequest) -> SimulationResult:
     if any("?" in (e.node_a, e.node_b, e.node_out) for e in non_ground):
         raise ValueError("Unconnected component terminal")
     node_index = _build_node_index(non_ground, req.ground_node)
+    if len(node_index) > MAX_NODES:
+        raise ValueError(f"Circuit has {len(node_index)} nodes; at most {MAX_NODES} are supported")
 
     mode = req.settings.mode
 

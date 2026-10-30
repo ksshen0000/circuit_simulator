@@ -7,14 +7,18 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - DB_PATH=/data/circuit.db
+    volumes:
+      - circuit-data:/data
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_URL=http://localhost:8000
+      - "5173:80"
     depends_on:
       - backend
+
+volumes:
+  circuit-data:

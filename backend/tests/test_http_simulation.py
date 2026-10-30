@@ -67,7 +67,8 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
             finished.set()
             return SimulationResult(mode='dc', x_values=[0], node_voltages={}, branch_currents={})
         with patch('app.routers.simulation.run_simulation', side_effect=blocking_solve):
-            task = asyncio.create_task(request('/simulate', {'elements':[], 'settings':{'mode':'dc'}}))
+            body = {'elements':[{'id':'R1','type':'resistor','node_a':'a','node_b':'GND','value':1000}], 'settings':{'mode':'dc'}}
+            task = asyncio.create_task(request('/simulate', body))
             try:
                 while not started.is_set():
                     await asyncio.sleep(.005)
