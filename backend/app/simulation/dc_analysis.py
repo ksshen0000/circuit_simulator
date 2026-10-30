@@ -4,8 +4,12 @@ from .mna import build_mna_dc, _eval_source
 from .opamp import solve, output_current
 
 
-def dc_solve(elements: list, node_index: dict[str, int], t: float = 0.0) -> tuple[dict, dict]:
-    """Return (node_voltages, branch_currents) for DC operating point."""
+def dc_solve(elements: list, node_index: dict[str, int], t: float | None = None) -> tuple[dict, dict]:
+    """Return operating point using declared DC values.
+
+    Passing an explicit time instead evaluates source waveforms for transient
+    initialization; it does not change the independent-source DC specification.
+    """
     n = len(node_index)
     v_sources = [e for e in elements if e.type in ("voltage_source", "inductor")]
 

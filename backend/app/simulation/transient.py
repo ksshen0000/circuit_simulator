@@ -3,6 +3,7 @@ import numpy as np
 from .mna import build_mna_transient, _eval_source, _idx
 from .dc_analysis import dc_solve
 from .opamp import solve, output_current
+from .time_grid import transient_grid
 
 
 def transient_sim(
@@ -16,7 +17,7 @@ def transient_sim(
 
     # DC operating point for initial conditions: evaluate sources at t_start - epsilon
     # so step sources at t_start=0 give 0V initial condition
-    t_ic = settings.t_start - 1e-12
+    t_ic = np.nextafter(settings.t_start, -np.inf)
     v0, j0 = dc_solve(elements, node_index, t=t_ic)
 
     # Build initial dynamic state from DC solution
@@ -38,15 +39,27 @@ def transient_sim(
     times = [float(t)]
     node_hist = {node: [v0[node]] for node in node_index}
     branch_hist = {el.id: [j0.get(el.id, 0.0)] for el in elements if el.type != "ground"}
-    nominal_h = h
-    factor = 1.0 if settings.method == "euler" else 2.0
-    steps = int(np.ceil((t_stop - t) / nominal_h))
-    for step in range(1, steps + 1):
-        next_t = min(settings.t_start + step * nominal_h, t_stop)
+    devices = [e for e in elements if e.type == "opamp"]
+    previous = np.zeros(n + len(v_sources) + len(devices))
+    for node, idx in node_index.items():
+        previous[idx] = v0[node]
+    for k, el in enumerate(v_sources + devices):
+        previous[n + k] = j0[el.id]
+    grid, jumps = transient_grid(elements, settings)
+    for next_t in grid[1:]:
+        if next_t <= t:
+            continue
         h = next_t - t
+        method = "euler" if t in jumps else settings.method
+        factor = 1.0 if method == "euler" else 2.0
         t = next_t
-        A, z = build_mna_transient(elements, node_index, n, t, h, state, settings.method)
-        x = solve(A, z, elements, node_index, state=state, h=h)
+        source_values = jumps.get(t, {})
+        A, z = build_mna_transient(elements, node_index, n, t, h, state, method, source_values)
+        try:
+            x = solve(A, z, elements, node_index, state=state, h=h, initial=previous)
+        except ValueError as exc:
+            raise ValueError(f"Transient failed at t={t:.12g} s (step={h:.12g} s): {exc}") from exc
+        previous = x
         times.append(float(t))
         for node, idx in node_index.items():
             node_hist[node].append(float(x[idx]))
@@ -86,7 +99,7 @@ def transient_sim(
                 pass  # filled below
 
             elif el.type == "current_source":
-                branch_hist[el.id].append(float(_eval_source(el, t)))
+                branch_hist[el.id].append(float(source_values.get(el.id, _eval_source(el, t))))
 
         for k, el in enumerate(v_sources):
             branch_hist[el.id].append(float(x[n + k]))

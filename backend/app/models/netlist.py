@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 from pydantic import BaseModel, Field, model_validator, ConfigDict
 from typing import Literal, Optional, Annotated, Union
 
@@ -17,6 +18,13 @@ class NetlistElement(BaseModel):
     ac_phase: float = 0.0
     source_waveform: Literal["dc", "sine", "pulse", "step"] = "dc"
     sine_frequency: Optional[float] = None
+    sine_amplitude: Optional[float] = None
+    sine_phase: Optional[float] = None
+    sine_offset: float = 0.0
+    pulse_low: float = 0.0
+    pulse_delay: float = Field(default=0.0, ge=0)
+    pulse_rise: float = Field(default=0.0, ge=0)
+    pulse_fall: float = Field(default=0.0, ge=0)
     pulse_period: Optional[float] = None
     pulse_width: Optional[float] = None
 
@@ -45,6 +53,11 @@ class NetlistElement(BaseModel):
                 raise ValueError(f"{name} must be positive")
         if self.pulse_period and self.pulse_width and self.pulse_width > self.pulse_period:
             raise ValueError("Pulse width cannot exceed period")
+        if self.source_waveform == "pulse":
+            period = self.pulse_period or 1.0
+            width = self.pulse_width if self.pulse_width is not None else period / 2
+            if self.pulse_rise + width + self.pulse_fall > period:
+                raise ValueError("Pulse rise + width + fall cannot exceed period")
         return self
 
 
@@ -64,6 +77,9 @@ class ACSettings(BaseModel):
     def validate_range(self):
         if self.f_stop < self.f_start:
             raise ValueError("Stop frequency must be at least start frequency")
+        decades = math.log10(self.f_stop) - math.log10(self.f_start)
+        if self.sweep_type == "log" and math.ceil(decades * self.points_per_decade) + 1 > 200000:
+            raise ValueError("At most 200000 AC points are allowed")
         return self
 
 
@@ -77,6 +93,8 @@ class TransientSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_range(self):
+        if self.t_start + self.t_step == self.t_start:
+            raise ValueError("Time step is too small to represent at start time")
         if self.t_stop <= self.t_start:
             raise ValueError("Stop time must be after start time")
         if (self.t_stop - self.t_start) / self.t_step > 200000:

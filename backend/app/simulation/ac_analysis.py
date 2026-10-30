@@ -23,11 +23,11 @@ def ac_sweep(
     v_sources = [e for e in elements if e.type == "voltage_source"]
 
     if settings.sweep_type == "log":
-        freqs = np.logspace(
-            np.log10(settings.f_start),
-            np.log10(settings.f_stop),
-            int(np.log10(settings.f_stop / settings.f_start) * settings.points_per_decade + 1),
-        )
+        start, stop = np.log10(settings.f_start), np.log10(settings.f_stop)
+        count = 1 if settings.f_start == settings.f_stop else max(2, int(np.ceil((stop - start) * settings.points_per_decade)) + 1)
+        freqs = np.logspace(start, stop, count)
+        # Preserve user-specified boundaries, including sub-decade sweeps.
+        freqs[0], freqs[-1] = settings.f_start, settings.f_stop
     else:
         freqs = np.linspace(settings.f_start, settings.f_stop, settings.points_per_decade)
 

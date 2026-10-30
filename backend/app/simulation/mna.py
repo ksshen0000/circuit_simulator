@@ -8,6 +8,7 @@ Caller is responsible for choosing real vs complex dtype (pass dtype=complex for
 """
 from __future__ import annotations
 import numpy as np
+from .sources import evaluate_source as _eval_source
 
 
 def _idx(node: str, node_index: dict[str, int]) -> int:
@@ -19,13 +20,13 @@ def build_mna_dc(
     elements: list,
     node_index: dict[str, int],
     n_nodes: int,
-    t: float = 0.0,
+    t: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Build MNA for DC operating point.
     Capacitors → open circuit (ignored).
     Inductors → short circuit (0 V voltage source).
     Returns (A, z) real arrays.
-    t: evaluate time-varying sources at this time (use t<0 for t=0- initial conditions).
+    t=None uses declared DC values; an explicit time evaluates waveforms.
     """
     v_sources: list[tuple[str, str, float, str]] = []
     for el in elements:
@@ -137,6 +138,7 @@ def build_mna_transient(
     h: float,
     state: dict,
     method: str = "trapezoidal",
+    source_values: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Build real MNA for one transient timestep using trapezoidal companion models.
 
@@ -145,6 +147,7 @@ def build_mna_transient(
       "ind_<id>": {"v": voltage_across, "i": current_through},
     }
     """
+    source_values = source_values or {}
     factor = 1.0 if method == "euler" else 2.0
     v_sources = [
         el for el in elements
@@ -192,7 +195,7 @@ def build_mna_transient(
                 z[b] += Ieq
 
         elif el.type == "current_source":
-            val = _eval_source(el, t)
+            val = source_values.get(el.id, _eval_source(el, t))
             if a >= 0:
                 z[a] -= val
             if b >= 0:
@@ -202,7 +205,7 @@ def build_mna_transient(
         a = _idx(el.node_a, node_index)
         b = _idx(el.node_b, node_index)
         col = n_nodes + k
-        val = _eval_source(el, t)
+        val = source_values.get(el.id, _eval_source(el, t))
         if a >= 0:
             A[a, col] += 1.0
             A[col, a] += 1.0
@@ -222,22 +225,3 @@ def _stamp_conductance(A: np.ndarray, a: int, b: int, g) -> None:
     if a >= 0 and b >= 0:
         A[a, b] -= g
         A[b, a] -= g
-
-
-def _eval_source(el, t: float) -> float:
-    wf = el.source_waveform
-    if wf == "dc":
-        return el.value
-    elif wf == "sine":
-        freq = el.sine_frequency or 60.0
-        amp = el.ac_amplitude if el.ac_amplitude is not None else el.value
-        phase = np.radians(el.ac_phase)
-        return amp * np.sin(2 * np.pi * freq * t + phase)
-    elif wf == "step":
-        return el.value if t > 0 else 0.0
-    elif wf == "pulse":
-        period = el.pulse_period or 1.0
-        width = el.pulse_width or period / 2
-        t_mod = t % period
-        return el.value if t_mod < width else 0.0
-    return el.value

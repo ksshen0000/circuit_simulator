@@ -7,7 +7,7 @@ import numpy as np
 from .mna import _idx, _stamp_conductance
 
 
-def solve(A, z, elements, node_index, *, omega=None, state=None, h=None):
+def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial=None):
     devices = [e for e in elements if e.type == "opamp"]
     base = len(z)
     size = base + len(devices)
@@ -55,20 +55,30 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None):
                 target[col] = offset
         return jac, target
 
-    x = np.zeros(size, dtype=A.dtype)
-    for _ in range(100):
-        jac, target = system(x)
-        residual = jac @ x - target
+    def linear_solve(jac, target):
         try:
             candidate = np.linalg.solve(jac, target)
         except np.linalg.LinAlgError as exc:
             raise ValueError("Singular circuit: check ground, floating nodes and conflicting ideal sources") from exc
         if not np.all(np.isfinite(candidate)):
             raise ValueError("Non-finite simulation result")
+        return candidate
+
+    x = np.zeros(size, dtype=A.dtype) if initial is None else np.asarray(initial, dtype=A.dtype).copy()
+    if x.shape != (size,) or not np.all(np.isfinite(x)):
+        raise ValueError("Invalid solver initial state")
+    if not devices or omega is not None:
+        return linear_solve(*system(x))
+    for _ in range(100):
+        jac, target = system(x)
+        residual = jac @ x - target
+        candidate = linear_solve(jac, target)
+        # Check the actual piecewise system, not just its local linearization.
+        candidate_jac, candidate_rhs = system(candidate)
+        if np.linalg.norm(candidate_jac @ candidate - candidate_rhs, ord=np.inf) < 1e-9:
+            return candidate
         delta = candidate - x
         norm = np.linalg.norm(residual, ord=np.inf) if size else 0
-        if norm < 1e-9:
-            return candidate
         # Damped Newton prevents alternating between opposite saturation rails.
         alpha = 1.0
         for _ in range(40):
