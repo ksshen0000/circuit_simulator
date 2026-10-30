@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from starlette.concurrency import run_in_threadpool
 from ..models.netlist import SimulateRequest
 from ..models.results import SimulationResult
 from ..simulation.engine import run_simulation, _build_node_index  # Existing imports remain supported.
@@ -11,7 +12,7 @@ router = APIRouter()
 @router.post("/simulate", response_model=SimulationResult)
 async def simulate(req: SimulateRequest) -> SimulationResult:
     try:
-        return run_simulation(req)
+        return await run_in_threadpool(run_simulation, req)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

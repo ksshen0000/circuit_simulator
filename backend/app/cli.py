@@ -2,10 +2,11 @@
 from __future__ import annotations
 import argparse
 import csv
-import json
+import os
+import tempfile
 from pathlib import Path
 import sys
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
 from .models.netlist import SimulateRequest
 from .spice import parse_spice, export_spice
 from .simulation.engine import run_simulation
@@ -29,6 +30,27 @@ def write_csv(result, stream):
     writer.writerow([axis, *columns])
     for index, x in enumerate(result.x_values):
         writer.writerow([x, *(values[index] for values in columns.values())])
+
+
+@contextmanager
+def output_file(path):
+    """Replace a result only after its complete contents have been written."""
+    destination = Path(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="",
+                                         dir=destination.parent, prefix=f".{destination.name}.",
+                                         suffix=".part", delete=False) as stream:
+            temporary = Path(stream.name)
+            yield stream
+            stream.flush()
+            os.fsync(stream.fileno())
+        if destination.exists():
+            temporary.chmod(destination.stat().st_mode & 0o777)
+        os.replace(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def main(argv=None):
@@ -66,7 +88,7 @@ def main(argv=None):
         else:
             result = run_simulation(request)
             output = result.model_dump_json(indent=2) + "\n" if args.format == "json" else None
-        with (open(args.output, "w", encoding="utf-8", newline="") if args.output else nullcontext(sys.stdout)) as stream:
+        with (output_file(args.output) if args.output else nullcontext(sys.stdout)) as stream:
             if output is None:
                 write_csv(result, stream)
             else:

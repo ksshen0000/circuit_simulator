@@ -175,9 +175,19 @@ def parse_spice(text: str) -> ParsedSpice:
 
 
 def export_spice(request: SimulateRequest, title: str = "Circuit Simulator") -> str:
+    node_origins = {}
+
     def net(value):
-        value = "GND" if value == request.ground_node else value
-        return "0" if _node(value) == "GND" else _node(value)
+        if value == request.ground_node:
+            return "0"
+        normalized = _node(value)
+        if normalized == "GND":
+            raise ValueError(f"节点「{value}」不是当前参考地，不能导出为 SPICE 接地别名")
+        previous = node_origins.get(normalized)
+        if previous is not None and previous != value:
+            raise ValueError(f"节点「{previous}」与「{value}」在 SPICE 中大小写相同，导出会改变连接")
+        node_origins[normalized] = value
+        return normalized
 
     def num(value):
         if not math.isfinite(value):
