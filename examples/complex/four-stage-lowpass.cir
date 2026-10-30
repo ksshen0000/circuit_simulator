@@ -1,0 +1,16 @@
+* Four buffered RC low-pass stages
+V1 in 0 DC 0 AC 1
+R0 in f0 1k
+C0 f0 0 1u
+XU0 f0 o0 o0 CS_OPAMP RIN=1e15 ROUT=1e-6
+R1 o0 f1 1k
+C1 f1 0 1u
+XU1 f1 o1 o1 CS_OPAMP RIN=1e15 ROUT=1e-6
+R2 o1 f2 1k
+C2 f2 0 1u
+XU2 f2 o2 o2 CS_OPAMP RIN=1e15 ROUT=1e-6
+R3 o2 f3 1k
+C3 f3 0 1u
+XU3 f3 o3 o3 CS_OPAMP RIN=1e15 ROUT=1e-6
+.ac dec 20 1 100k
+.end

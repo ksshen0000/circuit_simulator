@@ -1,0 +1,112 @@
+{
+  "elements": [
+    {
+      "id": "V",
+      "type": "voltage_source",
+      "node_a": "in",
+      "node_b": "GND",
+      "value": 2.0,
+      "ac_amplitude": 2.0,
+      "source_waveform": "sine",
+      "sine_frequency": 1000.0
+    },
+    {
+      "id": "U0",
+      "type": "opamp",
+      "node_a": "in",
+      "node_b": "fb0",
+      "node_out": "o0",
+      "output_min": -10.0,
+      "output_max": 10.0,
+      "slew_rate": 200000.0
+    },
+    {
+      "id": "Rf0",
+      "type": "resistor",
+      "node_a": "o0",
+      "node_b": "fb0",
+      "value": 2000.0
+    },
+    {
+      "id": "Rg0",
+      "type": "resistor",
+      "node_a": "fb0",
+      "node_b": "GND",
+      "value": 1000.0
+    },
+    {
+      "id": "C0",
+      "type": "capacitor",
+      "node_a": "o0",
+      "node_b": "GND",
+      "value": 1e-9
+    },
+    {
+      "id": "U1",
+      "type": "opamp",
+      "node_a": "o0",
+      "node_b": "fb1",
+      "node_out": "o1",
+      "output_min": -10.0,
+      "output_max": 10.0,
+      "slew_rate": 200000.0
+    },
+    {
+      "id": "Rf1",
+      "type": "resistor",
+      "node_a": "o1",
+      "node_b": "fb1",
+      "value": 2000.0
+    },
+    {
+      "id": "Rg1",
+      "type": "resistor",
+      "node_a": "fb1",
+      "node_b": "GND",
+      "value": 1000.0
+    },
+    {
+      "id": "C1",
+      "type": "capacitor",
+      "node_a": "o1",
+      "node_b": "GND",
+      "value": 1e-9
+    },
+    {
+      "id": "U2",
+      "type": "opamp",
+      "node_a": "o1",
+      "node_b": "fb2",
+      "node_out": "o2",
+      "output_min": -10.0,
+      "output_max": 10.0,
+      "slew_rate": 200000.0
+    },
+    {
+      "id": "Rf2",
+      "type": "resistor",
+      "node_a": "o2",
+      "node_b": "fb2",
+      "value": 2000.0
+    },
+    {
+      "id": "Rg2",
+      "type": "resistor",
+      "node_a": "fb2",
+      "node_b": "GND",
+      "value": 1000.0
+    },
+    {
+      "id": "C2",
+      "type": "capacitor",
+      "node_a": "o2",
+      "node_b": "GND",
+      "value": 1e-9
+    }
+  ],
+  "settings": {
+    "mode": "transient",
+    "t_stop": 0.003,
+    "t_step": 2e-6
+  }
+}

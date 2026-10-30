@@ -1,0 +1,38 @@
+{
+  "elements": [
+    {
+      "id": "V",
+      "type": "voltage_source",
+      "node_a": "in",
+      "node_b": "GND",
+      "value": 1.0,
+      "source_waveform": "step"
+    },
+    {
+      "id": "R",
+      "type": "resistor",
+      "node_a": "in",
+      "node_b": "mid",
+      "value": 10.0
+    },
+    {
+      "id": "L",
+      "type": "inductor",
+      "node_a": "mid",
+      "node_b": "out",
+      "value": 0.01
+    },
+    {
+      "id": "C",
+      "type": "capacitor",
+      "node_a": "out",
+      "node_b": "GND",
+      "value": 1e-6
+    }
+  ],
+  "settings": {
+    "mode": "transient",
+    "t_stop": 0.003,
+    "t_step": 1e-6
+  }
+}
