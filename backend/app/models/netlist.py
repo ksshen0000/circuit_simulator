@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-MAX_ELEMENTS = 500
+MAX_ELEMENTS = 2000
 MAX_NODES = 5000
 
 

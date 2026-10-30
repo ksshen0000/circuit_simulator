@@ -2,31 +2,62 @@
 
 Branch current is positive into the output; input bias currents are not modeled.
 The dominant pole uses backward Euler in transient, including slew limiting.
+The Newton Jacobian is assembled sparsely and solved with SuperLU.
 """
 import numpy as np
+import scipy.sparse as sp
 
-from .mna import _idx, _stamp_conductance
+from .matrix import solve_linear
+from .mna import _idx
+
+
+def _stamp_coo(rows: list[int], cols: list[int], data: list, a: int, b: int, g) -> None:
+    """Stamp a conductance between terminals a and b into coordinate lists."""
+    if a >= 0:
+        rows.append(a)
+        cols.append(a)
+        data.append(g)
+    if b >= 0:
+        rows.append(b)
+        cols.append(b)
+        data.append(g)
+    if a >= 0 and b >= 0:
+        rows.append(a)
+        cols.append(b)
+        data.append(-g)
+        rows.append(b)
+        cols.append(a)
+        data.append(-g)
 
 
 def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial=None):
     devices = [e for e in elements if e.type == "opamp"]
     base = len(z)
     size = base + len(devices)
-    matrix = np.zeros((size, size), dtype=A.dtype)
-    matrix[:base, :base] = A
     rhs = np.zeros(size, dtype=z.dtype)
     rhs[:base] = z
+
+    # Constant Jacobian structure: base MNA plus opamp input/output coupling.
+    a_coo = A.tocoo()
+    const_rows: list[int] = a_coo.row.tolist()
+    const_cols: list[int] = a_coo.col.tolist()
+    const_data: list = a_coo.data.tolist()
     for k, el in enumerate(devices):
         a, b, out = (_idx(node, node_index) for node in (el.node_a, el.node_b, el.node_out))
         col = base + k
-        _stamp_conductance(matrix, a, b, 1 / el.input_resistance)
+        _stamp_coo(const_rows, const_cols, const_data, a, b, 1 / el.input_resistance)
         if out >= 0:
-            matrix[out, col] += 1
-            matrix[col, out] += 1
-        matrix[col, col] = -el.output_resistance
+            const_rows.extend([out, col])
+            const_cols.extend([col, out])
+            const_data.extend([1.0, 1.0])
+        const_rows.append(col)
+        const_cols.append(col)
+        const_data.append(-el.output_resistance)
 
     def system(x):
-        jac = matrix.copy()
+        rows = const_rows.copy()
+        cols = const_cols.copy()
+        data = const_data.copy()
         target = rhs.copy()
         for k, el in enumerate(devices):
             a, b = _idx(el.node_a, node_index), _idx(el.node_b, node_index)
@@ -50,20 +81,19 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial
                 target[col] = np.clip(raw, low, high)
             else:
                 if a >= 0:
-                    jac[col, a] -= gain
+                    rows.append(col)
+                    cols.append(a)
+                    data.append(-gain)
                 if b >= 0:
-                    jac[col, b] += gain
+                    rows.append(col)
+                    cols.append(b)
+                    data.append(gain)
                 target[col] = offset
+        jac = sp.coo_matrix((data, (rows, cols)), shape=(size, size), dtype=A.dtype).tocsc()
         return jac, target
 
     def linear_solve(jac, target):
-        try:
-            candidate = np.linalg.solve(jac, target)
-        except np.linalg.LinAlgError as exc:
-            raise ValueError("Singular circuit: check ground, floating nodes and conflicting ideal sources") from exc
-        if not np.all(np.isfinite(candidate)):
-            raise ValueError("Non-finite simulation result")
-        return candidate
+        return solve_linear(jac, target)
 
     x = np.zeros(size, dtype=A.dtype) if initial is None else np.asarray(initial, dtype=A.dtype).copy()
     if x.shape != (size,) or not np.all(np.isfinite(x)):

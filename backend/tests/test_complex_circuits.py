@@ -113,6 +113,17 @@ class ComplexCircuits(unittest.TestCase):
         for i in range(count):
             self.assertAlmostEqual(result.node_voltages[f'n{i}'][0],1-i/count,places=10)
 
+    def test_large_resistor_ladder_sparse(self):
+        """1000-node ladder exercises the sparse solver path (dense would be O(n^2))."""
+        count = 1000
+        elements = [part('voltage_source','V','n0','GND',1)]
+        elements += [part('resistor',f'R{i}',f'n{i}',f'n{i+1}' if i<count-1 else 'GND',1000) for i in range(count)]
+        result = run(elements, mode='dc')
+        # Uniform ladder: node i is a 1 - i/count voltage divider.
+        self.assertAlmostEqual(result.node_voltages['n0'][0], 1.0, places=9)
+        self.assertAlmostEqual(result.node_voltages[f'n{count//2}'][0], 0.5, places=9)
+        self.assertAlmostEqual(result.node_voltages[f'n{count-1}'][0], 1 / count, places=9)
+
 
 if __name__ == '__main__':
     unittest.main()
