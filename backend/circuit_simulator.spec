@@ -37,13 +37,9 @@ a = Analysis(
         "uvicorn.lifespan",
         "uvicorn.lifespan.on",
         "uvicorn.lifespan.off",
-        # numpy / scipy
+        # numpy
         "numpy",
         "numpy.core._multiarray_umath",
-        "scipy",
-        "scipy.linalg",
-        "scipy.sparse",
-        "scipy.sparse.csgraph._validation",
     ],
     hookspath=[],
     runtime_hooks=[],

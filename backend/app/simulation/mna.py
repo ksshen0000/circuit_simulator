@@ -7,7 +7,9 @@ Builds the stamp system  A @ x = z  where:
 Caller is responsible for choosing real vs complex dtype (pass dtype=complex for AC).
 """
 from __future__ import annotations
+
 import numpy as np
+
 from .sources import evaluate_source as _eval_source
 
 

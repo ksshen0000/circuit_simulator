@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import numpy as np
-from .mna import build_mna_transient, _eval_source, _idx
+
 from .dc_analysis import dc_solve
-from .opamp import solve, output_current
+from .mna import _eval_source, _idx, build_mna_transient
+from .opamp import output_current, solve
 from .time_grid import transient_grid
 
 
@@ -34,7 +36,6 @@ def transient_sim(
 
     h = settings.t_step
     t = settings.t_start
-    t_stop = settings.t_stop
 
     times = [float(t)]
     node_hist = {node: [v0[node]] for node in node_index}

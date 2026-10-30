@@ -7,14 +7,13 @@ Covers:
   - Transient: sine source waveform shape
   - AC: purely resistive circuit frequency-independent response
 """
-import math
 import pytest
+
+from app.models.netlist import ACSettings, NetlistElement, TransientSettings
+from app.routers.simulation import _build_node_index
+from app.simulation.ac_analysis import ac_sweep
 from app.simulation.dc_analysis import dc_solve
 from app.simulation.transient import transient_sim
-from app.simulation.ac_analysis import ac_sweep
-from app.routers.simulation import _build_node_index
-from app.models.netlist import NetlistElement, TransientSettings, ACSettings
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -152,7 +151,7 @@ class TestACResistive:
 
     def test_magnitude_frequency_independent(self):
         freqs, nv_mag, *_ = self._run()
-        for f, mag in zip(freqs, nv_mag["N1"]):
+        for f, mag in zip(freqs, nv_mag["N1"], strict=False):
             assert abs(mag - 1.0) < 1e-3, f"At {f:.0f} Hz: |V(N1)|={mag:.4f}, expected 1.0"
 
     def test_phase_zero(self):

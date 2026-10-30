@@ -31,12 +31,12 @@ export function PropertyPanel() {
     </div>
   );
 
-  const selectField = (label: string, key: keyof CircuitElement, options: string[]) => (
+  const selectField = (label: string, key: "sourceWaveform", options: string[]) => (
     <div key={key} style={{ marginBottom: 8 }}>
       <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 2 }}>{label}</label>
       <select
-        value={el[key] as string}
-        onChange={(e) => updateElement(id, { [key]: e.target.value as any })}
+        value={el[key]}
+        onChange={(e) => updateElement(id, { [key]: e.target.value as CircuitElement["sourceWaveform"] })}
         style={{ width: "100%", padding: "3px 6px", border: "1px solid #e2e8f0", borderRadius: 4, fontSize: 12 }}
       >
         {options.map((o) => <option key={o} value={o}>{o}</option>)}

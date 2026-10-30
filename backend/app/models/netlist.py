@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import math
-from pydantic import BaseModel, Field, model_validator, ConfigDict
-from typing import Literal, Optional, Annotated, Union
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class NetlistElement(BaseModel):
@@ -14,21 +16,21 @@ class NetlistElement(BaseModel):
     node_a: str
     node_b: str
     value: float = 0.0
-    ac_amplitude: Optional[float] = None
+    ac_amplitude: float | None = None
     ac_phase: float = 0.0
     source_waveform: Literal["dc", "sine", "pulse", "step"] = "dc"
-    sine_frequency: Optional[float] = None
-    sine_amplitude: Optional[float] = None
-    sine_phase: Optional[float] = None
+    sine_frequency: float | None = None
+    sine_amplitude: float | None = None
+    sine_phase: float | None = None
     sine_offset: float = 0.0
     pulse_low: float = 0.0
     pulse_delay: float = Field(default=0.0, ge=0)
     pulse_rise: float = Field(default=0.0, ge=0)
     pulse_fall: float = Field(default=0.0, ge=0)
-    pulse_period: Optional[float] = None
-    pulse_width: Optional[float] = None
+    pulse_period: float | None = None
+    pulse_width: float | None = None
 
-    node_out: Optional[str] = None
+    node_out: str | None = None
     open_loop_gain: float = Field(default=100000.0, gt=0)
     gain_bandwidth: float = Field(default=1e6, gt=0)
     input_resistance: float = Field(default=1e9, gt=0)
@@ -103,7 +105,7 @@ class TransientSettings(BaseModel):
 
 
 SimSettings = Annotated[
-    Union[DCSettings, ACSettings, TransientSettings],
+    DCSettings | ACSettings | TransientSettings,
     Field(discriminator="mode"),
 ]
 

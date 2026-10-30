@@ -1,7 +1,10 @@
 """Independent analytical checks for larger circuits; also runnable with unittest."""
 import unittest
+
 import numpy as np
-from app.models.netlist import NetlistElement as E, SimulateRequest, ACSettings
+
+from app.models.netlist import ACSettings, SimulateRequest
+from app.models.netlist import NetlistElement as E
 from app.simulation.engine import run_simulation
 
 

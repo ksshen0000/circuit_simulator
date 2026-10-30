@@ -4,9 +4,11 @@ import json
 import threading
 import unittest
 from unittest.mock import patch
+
 from fastapi import FastAPI
-from app.routers.simulation import router
+
 from app.models.results import SimulationResult
+from app.routers.simulation import router
 
 app = FastAPI()
 app.include_router(router)

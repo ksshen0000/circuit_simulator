@@ -1,9 +1,12 @@
 """Non-executing SPICE subset. Syntax and conversion live exclusively in Python."""
 from __future__ import annotations
+
 import math
 import re
+
 from pydantic import ValidationError
-from .models.netlist import NetlistElement, SimulateRequest, DCSettings, ACSettings, TransientSettings
+
+from .models.netlist import ACSettings, DCSettings, NetlistElement, SimulateRequest, TransientSettings
 from .models.spice import ParsedSpice
 
 SCALES = dict(t=1e12, g=1e9, meg=1e6, k=1e3, m=1e-3, u=1e-6, n=1e-9, p=1e-12, f=1e-15, mil=25.4e-6)
@@ -135,7 +138,8 @@ def parse_spice(text: str) -> ParsedSpice:
             lines[-1] = (previous, content + " " + line[1:].strip())
         else:
             lines.append((number, line))
-    elements, labels = [], set()
+    elements: list[NetlistElement] = []
+    labels: set[str] = set()
     settings, ended, analysis = DCSettings(mode="dc"), False, False
     for number, line in lines:
         try:
@@ -175,7 +179,7 @@ def parse_spice(text: str) -> ParsedSpice:
 
 
 def export_spice(request: SimulateRequest, title: str = "Circuit Simulator") -> str:
-    node_origins = {}
+    node_origins: dict[str, str] = {}
 
     def net(value):
         if value == request.ground_node:

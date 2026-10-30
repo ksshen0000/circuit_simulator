@@ -1,6 +1,7 @@
-import math
 import unittest
-from app.models.netlist import NetlistElement as E, TransientSettings
+
+from app.models.netlist import NetlistElement as E
+from app.models.netlist import TransientSettings
 from app.simulation.time_grid import transient_grid
 
 
@@ -12,7 +13,7 @@ class TimeGrid(unittest.TestCase):
     def test_roundoff_duplicates_are_removed(self):
         grid,jumps=transient_grid([pulse(pulse_period=.1,pulse_width=.02)],
                                   TransientSettings(mode='transient',t_step=.01,t_stop=1))
-        self.assertGreater(min(b-a for a,b in zip(grid,grid[1:])),.009)
+        self.assertGreater(min(b-a for a,b in zip(grid,grid[1:], strict=False)),.009)
         self.assertEqual(grid[-1],1)
         self.assertTrue(set(jumps).issubset(grid))
 

@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from starlette.concurrency import run_in_threadpool
+
 from ..models.netlist import SimulateRequest
 from ..models.results import SimulationResult
-from ..simulation.engine import run_simulation, _build_node_index  # Existing imports remain supported.
-from ..spice import parse_spice, export_spice
-from ..models.spice import SpiceTextRequest, ParsedSpice, SpiceExportRequest, SpiceExportResponse
+from ..models.spice import ParsedSpice, SpiceExportRequest, SpiceExportResponse, SpiceTextRequest
+from ..simulation.engine import _build_node_index, run_simulation  # noqa: F401  # _build_node_index re-exported for compatibility
+from ..spice import export_spice, parse_spice
 
 router = APIRouter()
 

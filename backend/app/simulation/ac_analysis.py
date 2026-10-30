@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import numpy as np
-from .mna import build_mna_ac
-from .opamp import solve, output_current
+
 from .dc_analysis import dc_solve
+from .mna import build_mna_ac
+from .opamp import output_current, solve
 
 
 def ac_sweep(

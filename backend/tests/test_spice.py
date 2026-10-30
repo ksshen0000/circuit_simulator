@@ -1,10 +1,11 @@
-import io
 import json
 from pathlib import Path
+
 import pytest
-from app.spice import parse_spice, export_spice, spice_number
-from app.simulation.engine import run_simulation
+
 from app.cli import main
+from app.simulation.engine import run_simulation
+from app.spice import export_spice, parse_spice, spice_number
 
 EXAMPLE = Path(__file__).resolve().parents[2] / 'examples/noninverting.cir'
 
@@ -31,8 +32,8 @@ def test_cli(tmp_path):
     assert 'V(OUT)_V' in output.read_text()
 
 def test_routes():
-    from app.models.spice import SpiceTextRequest, SpiceExportRequest
-    from app.routers.simulation import parse_text, export_text, simulate_text
+    from app.models.spice import SpiceExportRequest, SpiceTextRequest
+    from app.routers.simulation import export_text, parse_text, simulate_text
     body = SpiceTextRequest(text=EXAMPLE.read_text())
     parsed = parse_text(body)
     assert parse_spice(export_text(SpiceExportRequest(request=parsed.request)).text).request == parsed.request

@@ -1,9 +1,11 @@
 import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers.simulation import router as sim_router
-from .routers.circuits import router as circuit_router
+
 from .db import init_db
+from .routers.circuits import router as circuit_router
+from .routers.simulation import router as sim_router
 
 app = FastAPI(title="Circuit Simulator API")
 

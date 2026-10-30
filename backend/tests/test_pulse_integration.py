@@ -1,5 +1,6 @@
 import math
 import unittest
+
 from app.models.netlist import SimulateRequest
 from app.simulation.engine import run_simulation
 
@@ -15,11 +16,11 @@ class PulseIntegration(unittest.TestCase):
         result=run_simulation(request)
         peak=max(result.node_voltages['out'])
         self.assertAlmostEqual(peak,1-math.exp(-.0001/.001),delta=.003)
-        for t,v in zip(result.x_values,result.node_voltages['out']):
+        for t,v in zip(result.x_values,result.node_voltages['out'], strict=False):
             if t<=.0012:
                 self.assertAlmostEqual(v,0,places=12)
         self.assertGreater(max(result.node_voltages['in']),.9)
-        self.assertTrue(all(b>a for a,b in zip(result.x_values,result.x_values[1:])))
+        self.assertTrue(all(b>a for a,b in zip(result.x_values,result.x_values[1:], strict=False)))
 
 if __name__ == '__main__':
     unittest.main()

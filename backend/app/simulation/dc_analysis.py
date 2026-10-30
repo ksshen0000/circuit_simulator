@@ -1,7 +1,7 @@
 from __future__ import annotations
-import numpy as np
-from .mna import build_mna_dc, _eval_source
-from .opamp import solve, output_current
+
+from .mna import _eval_source, build_mna_dc
+from .opamp import output_current, solve
 
 
 def dc_solve(elements: list, node_index: dict[str, int], t: float | None = None) -> tuple[dict, dict]:

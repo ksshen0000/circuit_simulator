@@ -37,7 +37,7 @@ def transient_grid(elements, settings):
             for point in points:
                 add(point)
             # Retain at least one interior sample in each nonzero pulse segment.
-            for a,b in zip(points,points[1:]):
+            for a,b in zip(points,points[1:], strict=False):
                 if b>a:
                     add(a+(b-a)/2)
             if el.pulse_rise == 0:

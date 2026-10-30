@@ -1,5 +1,6 @@
 """Export must not silently merge distinct JSON nodes."""
 import unittest
+
 from app.models.netlist import SimulateRequest
 from app.spice import export_spice, parse_spice
 

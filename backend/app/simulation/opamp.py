@@ -4,6 +4,7 @@ Branch current is positive into the output; input bias currents are not modeled.
 The dominant pole uses backward Euler in transient, including slew limiting.
 """
 import numpy as np
+
 from .mna import _idx, _stamp_conductance
 
 

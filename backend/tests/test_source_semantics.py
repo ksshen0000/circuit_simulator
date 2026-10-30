@@ -1,7 +1,9 @@
 import unittest
-from app.models.netlist import NetlistElement as E, SimulateRequest
-from app.simulation.engine import run_simulation, _build_node_index
+
+from app.models.netlist import NetlistElement as E
+from app.models.netlist import SimulateRequest
 from app.simulation.dc_analysis import dc_solve
+from app.simulation.engine import _build_node_index, run_simulation
 
 
 class SourceSemantics(unittest.TestCase):

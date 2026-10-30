@@ -1,13 +1,15 @@
 """Analytical regression tests for nonideal opamps and solver correctness."""
+import asyncio
 import math
 
 import pytest
 from pydantic import ValidationError
-import asyncio
-from app.models.netlist import NetlistElement as E, ACSettings, TransientSettings, SimulateRequest
+
+from app.models.netlist import ACSettings, SimulateRequest, TransientSettings
+from app.models.netlist import NetlistElement as E
 from app.routers.simulation import _build_node_index, simulate
-from app.simulation.dc_analysis import dc_solve
 from app.simulation.ac_analysis import ac_sweep
+from app.simulation.dc_analysis import dc_solve
 from app.simulation.transient import transient_sim
 
 
@@ -84,10 +86,10 @@ def test_transient_slew_and_rails():
     elements[0].source_waveform = "step"
     times, v, i = transient_sim(elements, index(elements),
         TransientSettings(mode="transient", t_step=1e-4, t_stop=0.02))
-    internal = [out - 75 * current for out, current in zip(v["out"], i["U1"])]
+    internal = [out - 75 * current for out, current in zip(v["out"], i["U1"], strict=False)]
     assert internal[0] == pytest.approx(0)
     assert internal[1] == pytest.approx(0.1)
-    assert max(abs(b - a) / (tb - ta) for a, b, ta, tb in zip(internal, internal[1:], times, times[1:])) <= 1000.001
+    assert max(abs(b - a) / (tb - ta) for a, b, ta, tb in zip(internal, internal[1:], times, times[1:], strict=False)) <= 1000.001
     assert max(internal) <= 13.5 + 1e-8
     assert internal[-1] == pytest.approx(13.5)
     assert all(len(values) == len(times) for values in [*v.values(), *i.values()])

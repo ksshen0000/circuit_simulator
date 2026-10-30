@@ -1,4 +1,5 @@
 import unittest
+
 from app.models.netlist import NetlistElement as E
 from app.simulation.sources import evaluate_source
 

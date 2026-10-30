@@ -1,10 +1,12 @@
 """Framework-independent simulation API, shared by HTTP and the local CLI."""
 from __future__ import annotations
+
 import math
+
 from ..models.netlist import SimulateRequest
 from ..models.results import SimulationResult
-from .dc_analysis import dc_solve
 from .ac_analysis import ac_sweep
+from .dc_analysis import dc_solve
 from .transient import transient_sim
 
 
@@ -44,7 +46,7 @@ def run_simulation(req: SimulateRequest) -> SimulationResult:
             non_ground, node_index, req.settings
         )
         nv_real = {k: [m * math.cos(math.radians(p))
-                       for m, p in zip(nv_mag[k], nv_phase[k])]
+                       for m, p in zip(nv_mag[k], nv_phase[k], strict=True)]
                    for k in nv_mag}
         return SimulationResult(
             mode="ac",

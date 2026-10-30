@@ -1,15 +1,17 @@
 """Local Python CLI: no web server, database, frontend or Node.js required."""
 from __future__ import annotations
+
 import argparse
 import csv
 import os
-import tempfile
-from pathlib import Path
 import sys
-from contextlib import nullcontext, contextmanager
+import tempfile
+from contextlib import contextmanager, nullcontext
+from pathlib import Path
+
 from .models.netlist import SimulateRequest
-from .spice import parse_spice, export_spice
 from .simulation.engine import run_simulation
+from .spice import export_spice, parse_spice
 
 
 def write_csv(result, stream):

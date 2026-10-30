@@ -38,7 +38,7 @@ export function CircuitCanvas() {
 
   const toGrid = useCallback((e: React.MouseEvent): GridPoint => {
     return screenToGrid(svgPoint(e), pan, zoom);
-  }, [pan, zoom]);
+  }, [pan, zoom, svgPoint]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -96,6 +96,11 @@ export function CircuitCanvas() {
     }
   }, [toolMode, wireDraw.active, dragEl, panDrag, toGrid, svgPoint, zoom, pan, moveElement, applyPanDelta]);
 
+  const wireActive = wireDraw.active;
+  const wireStart = wireDraw.start;
+  const wireCurrent = wireDraw.current;
+  const wireHorizontal = wireDraw.horizontal;
+
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
     const gp = toGrid(e);
@@ -113,11 +118,11 @@ export function CircuitCanvas() {
     }
 
     if (toolMode === "wire") {
-      if (!wireDraw.active) {
+      if (!wireActive) {
         setWireDraw({ active: true, start: gp, current: gp, horizontal: true });
       } else {
         // Finalize wire
-        const pts = lShapedPath(wireDraw.start!, wireDraw.current!, wireDraw.horizontal);
+        const pts = lShapedPath(wireStart!, wireCurrent!, wireHorizontal);
         if (pts.length >= 2) addWire(pts);
         setWireDraw({ active: false, start: null, current: null, horizontal: true });
       }
@@ -125,7 +130,8 @@ export function CircuitCanvas() {
     }
 
     clearSelected();
-  }, [toolMode, pendingType, wireDraw, pan, toGrid, svgPoint, addElement, addWire, clearSelected, setTool]);
+  }, [toolMode, pendingType, wireActive, wireStart, wireCurrent, wireHorizontal,
+    pan, toGrid, svgPoint, addElement, addWire, clearSelected, setTool]);
 
   const onMouseUp = useCallback(() => {
     setDragEl(null);
