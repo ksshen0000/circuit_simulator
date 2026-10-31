@@ -1,10 +1,12 @@
 # 电路仿真器 —— 距专业使用的差距分析（评审意见）
 
+> 阅读说明：正文保留初次评审时的问题描述，部分条目已在后续开发中解决；当前实施状态以「后续进展」、Roadmap 和技术方案的实施状态总览为准。历史正文中的「无受控源」「全程 dense」「仅 2 个 commit」不代表当前仓库状态。
+
 > 评审范围：仓库根目录 `circuit_simulator`，未修改任何代码。
 > 评审方式：通读后端求解内核、SPICE 解析/导出、HTTP API、数据层、前端编辑器与测试，并结合 README / docs 中自述的能力边界。
 > 结论先放前面：这是一个**结构清晰、内核正确、文档认真**的“教学/原型级”电路仿真器；但要达到可交付给专业工程师日常使用（对标 ngspice、LTspice、Falstad、CircuitLab、EasyEDA 仿真）的水平，在**器件模型、数值方法、性能、工程质量、安全与产品化**五个维度仍有显著差距。
 
-> **后续进展（2026-10-30 更新）**：本文档提出的主要差距已在 `feat/production-hardening` 分支逐项落地——工程质量/CI、部署加固、持久化、稀疏求解、收敛控制、自适应步长、受控源+二极管、SPICE 器件卡片、project 分组与经典用例种子均已完成（后端 88 个测试、前端 lint/build 全绿）。具体完成状态见下方 Roadmap 与附录清单的「状态」标注。
+> **后续进展（2026-10-31 更新）**：在上一轮已完成工程质量/CI、部署加固、持久化、稀疏求解、收敛控制、自适应步长、受控源+二极管、SPICE 器件卡片、project 分组与经典用例种子的基础上，本轮继续完成：SPICE `.param` 表达式引擎与 `.model` 卡片、文本 `SIN`/`PULSE` 源、NMOS/PMOS Level-1 MOSFET（DC/AC/瞬态与栅电容）、DC source stepping、前端撤销/重做、按分析模式显示的节点电压、波形光标/dB/相位/CSV/降采样，以及 MOSFET 共源模板。当前后端 125 个测试、24 个子测试通过；前端 lint/build 与 18 个 node 测试通过。独立子代理随后复测：6 组命令全绿；此前发现的 PMOS/NMOS 瞬态、浮空栅极、AC CSV、控制源导出、reltol/abstol、5000 节点、深参数链和未知单位问题均已修复并有回归覆盖，未发现阻塞交付的回归。具体完成状态见下方 Roadmap 与附录清单的「状态」标注。
 
 ---
 
@@ -29,7 +31,7 @@
 
 | 项目 | 现状 | 专业工具的要求 |
 | --- | --- | --- |
-| 半导体器件 | **无**二极管、BJT、MOSFET、JFET 等 | 必备。绝大多数真实电路含半导体器件 |
+| 半导体器件 | 二极管、NMOS/PMOS Level-1 已实现；BJT/JFET 仍缺 | 必备。绝大多数真实电路含半导体器件 |
 | 运放模型 | 仅一个单极点行为模型 `CS_OPAMP` | 需支持厂商 `.SUBCKT` / `.MODEL` 宏模型 |
 | 无源器件 | R/C/L 仅理想模型 | 需串联/并联寄生、温度系数、非线性（如 MLCC 直流偏置降容） |
 | 受控源 | 无（E/F/G/H 四类受控源全缺） | 行为建模的基石 |
@@ -44,8 +46,8 @@
 
 已实现的子集质量不错，但范围过窄：
 
-- 缺失：`.param`、`.model`、`.subckt`、`.include` / `.lib`、`.func`、`.meas`、`.step`、`.noise`、`.tf`、`.four`、`.dc` 扫描、`.pz`、`.sens`、Monte Carlo / worst-case。
-- 源激励：文本入口不支持 `SIN` / `PULSE` / `EXP` / `PWL` / `SFFM`（README 明确写死，JSON 才支持部分波形）。
+- 已补：`.param` 表达式、`.model`（NMOS/PMOS/D）、文本 `SIN` / `PULSE`。
+- 仍缺失：`.subckt`、`.include` / `.lib`、`.func`、`.meas`、`.step`、`.noise`、`.tf`、`.four`、`.dc` 扫描、`.pz`、`.sens`、Monte Carlo / worst-case，以及 `EXP` / `PWL` / `SFFM` 源。
 - 厂商模型库完全不支持，意味着**无法与真实芯片数据手册 / 厂商模型对接**。
 - `.tran` 只支持起始时间 0、只支持梯形/欧拉、无 UIC（跳过初始工作点）。
 - 单文件单分析（一个文件只能一种分析）。
@@ -56,9 +58,9 @@
 
 内核在“线性+单非线性器件”范围内做对了，但缺乏专业求解器的关键机制：
 
-- **无自适应步长**：瞬态是“固定最大步长 + 已知脉冲边沿插点”，没有基于局部截断误差（LTE）的步长控制。遇到刚性问题（stiff）、高 Q 谐振、快慢时间常数混叠时会不可靠或低效。README 也承认“不等于自适应步长”。
+- **自适应步长**已实现（梯形法预测-校正 LTE）；仍缺 BDF2–5 与梯形振荡抑制，刚性问题仍可能受限。
 - **积分方法单一**：只有隐式 Euler 与梯形法。缺 GEAR/BDF 2~6 阶；梯形法在刚性问题上的“梯形振荡（trapezoidal ringing）”没有抑制手段。
-- **无收敛控制**：无 gmin 步进、无 source stepping、无用户可调的 `abstol/reltol/vntol/itl1/itl4`；Newton 阻尼固定为二分 40 次、外层 100 次、容差硬编码 `1e-9`。
+- **收敛控制已补 gmin + source stepping + `SolverOptions`**；仍缺用户可调的 `vntol`/`itl1`/`itl4` 前端入口、BDF 高阶方法和梯形振荡抑制。
 - **稠密矩阵**：`np.linalg.solve` 全程 dense，`build_mna_*` 都构造 `(n+m)×(n+m)` 全矩阵。80 节点基准尚可，但 n=数千时内存 O(n²)、求解 O(n³)，无法支撑专业级规模。README/benchmark 也承认“未引入稀疏求解或矩阵分解缓存”。
 - **数值稳定性边界**：没有条件数检查、没有针对病态矩阵的预处理；AC 在 `ω→0` 时电容/电感被跳过（可接受），但 `1/(jωL)` 在极低频会放大误差。
 - 运放模型里 `output_current` 通过 `base = len(x) - 运放数量` 反推索引，依赖“运放排在解向量末尾”的隐含约定，属脆弱实现。
@@ -84,11 +86,11 @@
 ### 6. 前端 / 交互
 
 - 全部内联 style，无设计系统/主题；UI 文案中文硬编码，无 i18n。
-- **无撤销/重做（undo/redo）**——专业原理图编辑器的基础能力。
+- ~~无撤销/重做（undo/redo）~~——已实现快照历史、快捷键和工具栏按钮；连续拖动/输入会合并为单个历史步骤。
 - 无元件库/搜索、无对齐/分布、无框选多选、无复制粘贴、无网格吸附开关之外的辅助定位（旋转只有 90° 一档，无镜像）。
 - 画布上的节点电压标注**只显示 DC 的 `vals[0]`**，AC/瞬态模式下会显示错误信息（取的是第一个样本）。
 - 波形面板无游标（cursor）、无测量读数、无 dB 刻度切换（幅值固定线性）、无相位/幅值同图、无数据导出。
-- 无组件级前端测试、无 E2E（Playwright/Cypress）、无 a11y、无错误边界；`package.json` **没有 `test` 脚本**。
+- 已有纯 TS 工具/状态单测（`npm test`，18 项），仍无组件级测试、E2E（Playwright/Cypress）、a11y 和错误边界。
 - 文本草稿只在内存中（刷新即失），无本地持久化；README 已提示，但产品化应自动保存。
 
 ### 7. 工程质量（CI/CD、测试、规范）
@@ -97,7 +99,7 @@
 - 后端测试依赖 pytest，但 `dev.sh` 默认环境**不安装 pytest**（`requirements.txt` 也不含），验证命令要额外 `uv pip install pytest`；且 `unittest discover -p 'test_*.py'` 会因个别文件 `import pytest` 失败。
 - Python 侧**无 lint/格式化/类型检查配置**（pyproject 中无 ruff/black/mypy 段落）；代码风格依赖手写自觉。
 - 前端有 ESLint 配置，但 `npm run build` 不跑 lint，也无 CI 执行。
-- 测试只有 773 行 / 48 项（自述），无覆盖率门槛、无变异/模糊测试；对 SPICE 解析器这种大量边界分支的代码，仅靠手写 case 覆盖不够。
+- 当前后端 125 项测试 + 24 个子测试、前端 18 个 node 测试，仍无覆盖率门槛、无变异/模糊测试；对 SPICE 解析器这种大量边界分支的代码，仅靠手写 case 覆盖不够。
 - 大量工作未提交：`git status` 显示 20+ 文件修改、多个未跟踪文件（`sources.py`、`time_grid.py`、`tests/*`、`benchmarks/`、`docs/`、`src-tauri/` 等），提交历史仅 2 个 commit。**“能跑”依赖工作区脏状态**，换机器 `git clone` 后无法复现当前能力。
 
 ### 8. 桌面打包 / 产品化
@@ -126,14 +128,14 @@
 
 8. ✅ 引入**稀疏矩阵求解**（`scipy.sparse.linalg` 或自实现，并把 scipy 变成真正的依赖）+ 一次分解多次回代的 AC 优化。
 9. 🟡 瞬态加**基于 LTE 的自适应步长**（已做）+ 高阶 BDF 与梯形振荡抑制（未做）。
-10. 🟡 增加收敛控制（gmin + 可调容差已做；source stepping 未做）。
-11. 🟡 扩展器件：二极管 ✅、BJT/MOSFET ⬜（Ebers-Moll / Shichman-Hodges）。
-12. 🟡 受控源（E/F/G/H）✅；`.model`/`.subckt`/`.param`/文本 `SIN`/`PULSE` ⬜。
+10. ✅ 收敛控制：gmin + source stepping + `SolverOptions`（前端可调入口仍未做）。
+11. 🟡 扩展器件：二极管 ✅、MOSFET Level-1 ✅（NMOS/PMOS，DC/AC/瞬态）、BJT ⬜。
+12. 🟡 受控源（E/F/G/H）✅；`.model`/`.param`/文本 `SIN`/`PULSE` ✅；`.subckt` ⬜。
 
-**P2 —— 产品化 / 体验**（⬜ 大部分未做）
+**P2 —— 产品化 / 体验**（🟡 部分完成）
 
-13. ⬜ 前端补 undo/redo、复制粘贴、对齐、元件库搜索、框选多选。
-14. ⬜ 波形面板加游标、dB/相位、数据导出、大数据降采样；修正画布节点标注在 AC/瞬态下取 `vals[0]` 的问题。
+13. 🟡 undo/redo、MOSFET 元件与共源模板已完成；复制粘贴、对齐、元件库搜索、框选多选未做。
+14. ✅ 波形面板游标、dB/相位、CSV 导出、LTTB 降采样；画布节点标注按 DC/AC/瞬态取正确样本。
 15. ⬜ i18n（先抽离中文硬编码）、错误边界、E2E 测试、a11y。
 16. ⬜ 补充 `.meas`、`.noise`、`.tf`、`.dc` 扫描、温度/噪声等分析，使其接近 ngspice 子集。
 17. 🟡 桌面版：已有 Tauri+PyInstaller 骨架；进程内桥接、单实例、签名/公证、自动更新、CHANGELOG 未做；LICENSE ✅ 已补。
@@ -154,19 +156,19 @@
 | 8 | `backend/app/db.py` | 无 schema 版本/迁移；elements/wires 为任意 JSON 且不校验 | 中 | ✅ 已做迁移 + 保存校验 |
 | 9 | `backend/app/simulation/mna.py` 等 | 稠密矩阵 + 每频点重复 `np.linalg.solve` | 高 | ✅ 已改稀疏 SuperLU |
 | 10 | `backend/app/simulation/transient.py` / `time_grid.py` | 固定步长+断点插值，无自适应 LTE 步长 | 高 | ✅ 已加自适应 LTE（高阶 BDF 未做） |
-| 11 | `backend/app/simulation/opamp.py` | 收敛容差硬编码、无 gmin/source stepping、`output_current` 索引计算脆弱 | 中 | 🟡 SolverOptions + gmin 已做；source stepping 未做 |
-| 12 | `backend/app/simulation/opamp.py` / README | 仅单极点行为运放，无噪声/温度/多极点/半导体 | 高 | 🟡 已加二极管+受控源；BJT/MOSFET/噪声/温度未做 |
-| 13 | `backend/app/spice.py` | 不支持 `.param/.model/.subckt/.include/.meas/.noise` 等 | 高 | 🟡 已加 D/E/F/G/H 卡片；其余未做 |
-| 14 | `backend/app/spice.py` | 文本源不支持 SIN/PULSE/EXP/PWL | 中 | ⬜ 未做（JSON 路径已支持部分波形） |
-| 15 | `frontend/package.json` | 无 `test` 脚本；无 E2E | 中 | 🟡 CI 已跑测试；package.json test 脚本与 E2E 未加 |
+| 11 | `backend/app/simulation/opamp.py` | 收敛容差硬编码、无 gmin/source stepping、`output_current` 索引计算脆弱 | 中 | 🟡 SolverOptions + gmin + source stepping 已做；`output_current` 索引仍未重构 |
+| 12 | `backend/app/simulation/opamp.py` / README | 仅单极点行为运放，无噪声/温度/多极点/半导体 | 高 | 🟡 已加二极管+受控源+MOSFET Level-1；BJT/噪声/温度未做 |
+| 13 | `backend/app/spice.py` | 不支持 `.param/.model/.subckt/.include/.meas/.noise` 等 | 高 | 🟡 已加 D/E/F/G/H、MOSFET、`.param`、`.model`；`.subckt/.include/.meas` 未做 |
+| 14 | `backend/app/spice.py` | 文本源不支持 SIN/PULSE/EXP/PWL | 中 | 🟡 SIN/PULSE 已支持；EXP/PWL/SFFM 未做 |
+| 15 | `frontend/package.json` | 无 `test` 脚本；无 E2E | 中 | 🟡 已加 `npm test`（18 个 node 测试）；E2E 未做 |
 | 16 | `frontend/src/App.tsx` 等 | 内联 style、中文硬编码、无 i18n | 低 | ⬜ 未做 |
-| 17 | `frontend/src/store/circuitStore.ts` | 无 undo/redo；每次变更全量重算节点 | 中 | ⬜ 未做 |
-| 18 | `frontend/src/components/Canvas/CircuitCanvas.tsx` | 节点电压标注只显示 `vals[0]`（AC/瞬态显示错误） | 中 | ⬜ 未做 |
-| 19 | `frontend/src/components/WaveformPanel` | 无游标/测量/dB/导出；全量渲染 | 中 | ⬜ 未做 |
+| 17 | `frontend/src/store/circuitStore.ts` | 无 undo/redo；每次变更全量重算节点 | 中 | 🟡 undo/redo 已做；全量重算未优化 |
+| 18 | `frontend/src/components/Canvas/CircuitCanvas.tsx` | 节点电压标注只显示 `vals[0]`（AC/瞬态显示错误） | 中 | ✅ 已按模式/光标取值 |
+| 19 | `frontend/src/components/WaveformPanel` | 无游标/测量/dB/导出；全量渲染 | 中 | ✅ 游标、dB/相位、CSV、LTTB 降采样 |
 | 20 | `backend/tests/*` | 依赖 pytest 但默认环境不装；unittest discover 会因 `import pytest` 报错 | 低 | ✅ CI 用 `uv sync --extra test` 解决 |
-| 21 | `git status` | 大量未提交改动，仅 2 个 commit，克隆后不可复现当前能力 | 高 | ✅ 已拆分提交（7 + 9 个 commit） |
+| 21 | `git status` | 大量未提交改动，仅 2 个 commit，克隆后不可复现当前能力 | 高 | ✅ 上一轮已拆分提交；本轮新增改动随本次提交纳入版本控制 |
 | 22 | 仓库根 | 无 LICENSE | 低 | ✅ 已加 MIT |
 
 ---
 
-*本文档仅做评审，未改动任何代码。*
+*本文档最初只做评审；后续的「状态」标注记录了实际落地情况。*

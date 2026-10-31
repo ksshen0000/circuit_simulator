@@ -6,7 +6,7 @@ require.extensions['.ts'] = (module, filename) => {
   const source = fs.readFileSync(filename, 'utf8').replace('import.meta.env.VITE_API_URL', 'undefined');
   module._compile(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, filename);
 };
-const { parseSpice, exportSpice } = require('../src/utils/spice.ts');
+const { parseSpice, exportSpice, spiceToCanvas } = require('../src/utils/spice.ts');
 test('frontend delegates SPICE parsing and export to Python API', async () => {
   const original = global.fetch;
   const request = { elements: [{ id:'R1', type:'resistor', node_a:'IN', node_b:'GND', value:1000, source_waveform:'dc', ac_phase:0 }], settings:{mode:'dc'}, ground_node:'GND' };
@@ -21,4 +21,28 @@ test('frontend delegates SPICE parsing and export to Python API', async () => {
     global.fetch = async (url) => { assert.ok(url.endsWith('/spice/export')); return {ok:true,json:async()=>({text:'* exported'})}; };
     assert.equal(await exportSpice(request), '* exported');
   } finally { global.fetch = original; }
+});
+
+test('canvas conversion maps diode and MOSFET terminals', () => {
+  const canvas = spiceToCanvas({
+    title: 'Devices',
+    request: {
+      ground_node: 'GND',
+      settings: { mode: 'dc' },
+      elements: [
+        { id: 'M1', type: 'mosfet', node_a: 'D', node_b: 'GND', node_g: 'G', value: 0,
+          source_waveform: 'dc', ac_phase: 0, mos_type: 'pmos', mos_vto: -1, mos_kp: 0.001 },
+        { id: 'D1', type: 'diode', node_a: 'A', node_b: 'K', value: 0,
+          source_waveform: 'dc', ac_phase: 0, diode_is: 1e-12, diode_n: 1.5 },
+      ],
+    },
+  });
+  const mos = canvas.elements.M1;
+  const diode = canvas.elements.D1;
+  assert.deepEqual(mos.nodeNames, ['D', 'GND', 'G']);
+  assert.equal(mos.mosType, 'pmos');
+  assert.equal(mos.terminalOut.gx, mos.position.gx - 2);
+  assert.deepEqual(diode.nodeNames, ['A', 'K']);
+  assert.equal(diode.diodeIs, 1e-12);
+  assert.equal(diode.diodeN, 1.5);
 });

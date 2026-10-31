@@ -22,8 +22,10 @@ for (const { id } of CIRCUIT_TEMPLATES) {
   test(`${id}: fresh circuit and correct terminal connectivity`, () => {
     const first = createCircuitTemplate(id);
     const second = createCircuitTemplate(id);
-    first.elements.U1.openLoopGain = 2;
-    assert.equal(second.elements.U1.openLoopGain, 1e5);
+    if (first.elements.U1) {
+      first.elements.U1.openLoopGain = 2;
+      assert.equal(second.elements.U1.openLoopGain, 1e5);
+    }
     const request = netlist(id);
     const byId = Object.fromEntries(request.elements.map((el) => [el.id, el]));
     for (const el of request.elements) {
@@ -31,27 +33,42 @@ for (const { id } of CIRCUIT_TEMPLATES) {
       assert.notEqual(el.node_b, '?');
       if (el.type === 'ground') assert.equal(el.node_a, 'GND');
     }
-    const op = byId.U1;
-    assert.ok(op.node_out && op.node_out !== '?');
-    assert.notEqual(op.node_a, op.node_b);
-    assert.notEqual(op.node_out, 'GND');
-    assert.equal(byId.V1.node_b, 'GND');
-    assert.equal(byId.RL.node_a, op.node_out);
-    assert.equal(byId.RL.node_b, 'GND');
-    if (id === 'follower') {
-      assert.equal(op.node_b, op.node_out);
-      assert.equal(op.node_a, byId.V1.node_a);
+    if (id === 'mosfet-cs') {
+      const mos = byId.M1;
+      assert.ok(mos.node_g && mos.node_g !== '?');
+      assert.notEqual(mos.node_a, mos.node_g);
+      assert.notEqual(mos.node_b, mos.node_g);
+      assert.equal(mos.type, 'mosfet');
+      assert.equal(mos.mos_type, 'nmos');
+      assert.equal(byId.VDD1.node_b, 'GND');
+      assert.equal(byId.VG1.node_b, 'GND');
+      assert.equal(byId.RD1.node_a, byId.VDD1.node_a);
+      assert.equal(byId.RD1.node_b, mos.node_a);
+      assert.equal(mos.node_b, 'GND');
+      assert.equal(byId.VG1.node_a, mos.node_g);
     } else {
-      assert.equal(byId.R1.node_a, op.node_b);
-      assert.equal(byId.R1.node_b, op.node_out);
-      if (id === 'noninverting') {
+      const op = byId.U1;
+      assert.ok(op.node_out && op.node_out !== '?');
+      assert.notEqual(op.node_a, op.node_b);
+      assert.notEqual(op.node_out, 'GND');
+      assert.equal(byId.V1.node_b, 'GND');
+      assert.equal(byId.RL.node_a, op.node_out);
+      assert.equal(byId.RL.node_b, 'GND');
+      if (id === 'follower') {
+        assert.equal(op.node_b, op.node_out);
         assert.equal(op.node_a, byId.V1.node_a);
-        assert.equal(byId.R2.node_a, op.node_b);
-        assert.equal(byId.R2.node_b, 'GND');
       } else {
-        assert.equal(op.node_a, 'GND');
-        assert.equal(byId.R2.node_a, byId.V1.node_a);
-        assert.equal(byId.R2.node_b, op.node_b);
+        assert.equal(byId.R1.node_a, op.node_b);
+        assert.equal(byId.R1.node_b, op.node_out);
+        if (id === 'noninverting') {
+          assert.equal(op.node_a, byId.V1.node_a);
+          assert.equal(byId.R2.node_a, op.node_b);
+          assert.equal(byId.R2.node_b, 'GND');
+        } else {
+          assert.equal(op.node_a, 'GND');
+          assert.equal(byId.R2.node_a, byId.V1.node_a);
+          assert.equal(byId.R2.node_b, op.node_b);
+        }
       }
     }
   });

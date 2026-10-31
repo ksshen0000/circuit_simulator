@@ -1,8 +1,8 @@
 """PyInstaller entry point — starts the FastAPI backend."""
-import sys
+import multiprocessing
 import os
 import platform
-import multiprocessing
+import sys
 
 
 def _get_data_dir() -> str:

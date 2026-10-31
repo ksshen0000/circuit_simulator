@@ -5,10 +5,11 @@ import { useSimulationStore } from "../../store/simulationStore";
 import { ElementRenderer } from "../Elements/ElementRenderer";
 import {
   elementTerminals, GRID_SIZE, type GridPoint, type Point, screenToGrid, gridToScreen, gpKey, gpEqual,
-  type CircuitElement, type CircuitNode,
+  type CircuitElement, type CircuitNode, mosfetTerminals,
 } from "../../types/circuit";
 import type { WaveformSignal } from "../../types/simulation";
 import { findJunctions } from "../../utils/graphUtils";
+import { formatNodeVoltage, nodeValueAt, sampleIndex } from "../../utils/display";
 
 interface WireDrawState {
   active: boolean;
@@ -22,7 +23,7 @@ export function CircuitCanvas() {
   const { elements, wires, nodes, addElement, moveElement, addWire, deleteWire,
     setSelected, clearSelected, selectedIds, deleteSelected } = useCircuitStore();
   const { toolMode, pendingType, zoom, pan, setTool, setZoom, applyPanDelta, showGrid } = useUIStore();
-  const { result, signals } = useSimulationStore();
+  const { result, signals, cursorIndex } = useSimulationStore();
 
   const [wireDraw, setWireDraw] = useState<WireDrawState>({
     active: false, start: null, current: null, horizontal: true,
@@ -56,6 +57,15 @@ export function CircuitCanvas() {
       if (e.key === "r" || e.key === "R") {
         const { rotateElement } = useCircuitStore.getState();
         selectedIds.forEach((id) => rotateElement(id));
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (e.shiftKey) useCircuitStore.getState().redo();
+        else useCircuitStore.getState().undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        useCircuitStore.getState().redo();
       }
     };
     window.addEventListener("keydown", handler);
@@ -204,19 +214,22 @@ export function CircuitCanvas() {
         })}
       </g>
 
-      {/* Node voltage labels */}
-      {result && Object.entries(result.nodeVoltages).map(([nodeId, vals]) => {
-        const node = nodes[nodeId];
-        if (!node || node.gridPoints.length === 0) return null;
-        const gp = node.gridPoints[0];
-        const sp = gridToScreen(gp, pan, zoom);
-        const v = vals[0]?.toFixed(2) ?? "?";
-        return (
-          <text key={nodeId} x={sp.x + 6} y={sp.y - 6} fontSize={10} fill="#3b82f6" style={{ userSelect: "none" }}>
-            {v}V
-          </text>
-        );
-      })}
+      {/* Node voltage labels: DC uses the operating point, AC the selected
+          frequency (or the first point), transient the cursor (or last point). */}
+      {result && (() => {
+        const index = sampleIndex(result, cursorIndex);
+        return Object.keys(result.nodeVoltages).map((nodeId) => {
+          const node = nodes[nodeId];
+          if (!node || node.gridPoints.length === 0) return null;
+          const gp = node.gridPoints[0];
+          const sp = gridToScreen(gp, pan, zoom);
+          return (
+            <text key={nodeId} x={sp.x + 6} y={sp.y - 6} fontSize={10} fill="#3b82f6" style={{ userSelect: "none" }}>
+              {formatNodeVoltage(nodeValueAt(result, nodeId, index))}
+            </text>
+          );
+        });
+      })()}
 
       {/* Components */}
       <g id="layer-components">
@@ -266,8 +279,15 @@ export function CircuitCanvas() {
               type: pendingType,
               position: ghostPos,
               rotation: 0,
-              terminalA: { gx: ghostPos.gx - 2, gy: ghostPos.gy },
-              terminalB: { gx: ghostPos.gx + 2, gy: ghostPos.gy },
+              ...(pendingType === "mosfet"
+                ? (() => {
+                  const [terminalA, terminalB, terminalOut] = mosfetTerminals(ghostPos, 0);
+                  return { terminalA, terminalB, terminalOut };
+                })()
+                : {
+                  terminalA: { gx: ghostPos.gx - 2, gy: ghostPos.gy },
+                  terminalB: { gx: ghostPos.gx + 2, gy: ghostPos.gy },
+                }),
               value: 0,
               label: "",
               sourceWaveform: "dc",

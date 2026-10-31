@@ -2,6 +2,7 @@
 
 > 本文档是《专业使用差距分析》的配套技术方案，针对每个主要差距给出**可落地的设计**（架构、接口、算法、文件组织、验收标准、风险）。
 > 方案按上一份文档的 P0/P1/P2 优先级组织。每条方案标注**目标工作量量级**（S < 1 天，M 数天，L 数周，XL 数月），供排期参考。
+> 各节「现状」和方案描述保留设计时的背景，当前完成情况以以下实施状态总览为准；表中的「本轮」指包含本次文档更新的提交。
 
 ---
 
@@ -11,20 +12,20 @@
 | --- | --- | --- | --- |
 | §1 | 稀疏矩阵求解器 | ✅ 已完成 | `4f52d77` |
 | §2 | 自适应步长 + 高阶积分 | 🟡 部分（梯形法 LTE 控制已做；BDF2–5 高阶未做） | `05afaf0` |
-| §3 | 收敛控制与非线性框架 | 🟡 部分（SolverOptions + gmin 连续法已做；source stepping 未做） | `a2da97c` |
+| §3 | 收敛控制与非线性框架 | ✅ 已完成（SolverOptions + gmin + source stepping） | `a2da97c` + 本轮 |
 | §4.1 | 受控源 + 二极管 | ✅ 已完成（VCVS/VCCS/CCCS/CCVS + Shockley 二极管） | `ee67156` |
-| §4.2 | BJT / MOSFET | ⬜ 未开始 | — |
-| §5 | SPICE 解析器扩展 | 🟡 部分（已支持 D/E/F/G/H 卡片；`.param/.model/.subckt/.include` 未做） | `4504812` |
+| §4.2 | BJT / MOSFET | 🟡 部分（NMOS/PMOS Level-1 已做；BJT 未做） | 本轮 |
+| §5 | SPICE 解析器扩展 | 🟡 部分（D/E/F/G/H、`.param`、`.model`、`SIN`/`PULSE` 已做；`.subckt/.include` 未做） | `4504812` + 本轮 |
 | §6 | 后端 / API / 部署 | ✅ 已完成（lifespan、CORS、资源上限、并发信号量、Docker） | `df279c0` |
 | §7 | 数据持久化 | ✅ 已完成（schema 迁移 + 保存校验） | `1788f6d` |
-| §8 | 前端 | 🟡 部分（project 分组已做；undo/redo、波形游标/测量、i18n 未做） | `5e8b432` |
+| §8 | 前端 | 🟡 大部分（project 分组、undo/redo、波形游标/dB/相位/CSV/降采样、模式化节点标注已做；i18n/E2E 未做） | `5e8b432` + 本轮 |
 | §9 | 工程质量 | ✅ 已完成（CI、uv.lock、ruff/mypy/pytest、pre-commit、LICENSE） | `e5f46ac` |
 | §10 | 桌面打包 | 🟡 部分（已有 Tauri+PyInstaller 骨架；CI 构建/签名/自动更新未做） | `c3af80f` |
 | §11 | 分析扩展（.dc/.noise/.tf/.meas） | ⬜ 未开始 | — |
 | §12 | 自研 vs 集成战略 | ⏳ 待决策 | — |
 | — | project 功能（分组 + 经典用例种子） | ✅ 已完成（同相放大器、RC 低通、RLC 阶跃） | `5e8b432` |
 
-验收基线：后端 ruff/mypy 全绿，**88 个测试通过**（解析解对照、稀疏千节点阶梯、自适应步长、受控源、二极管、SPICE 往返、种子电路电气验证）；前端 eslint/build 全绿，4 个测试通过。
+验收基线：后端 ruff/mypy 全绿，**125 个测试 + 24 个子测试通过**（解析解对照、稀疏千节点阶梯、自适应步长、source stepping、受控源、二极管、MOSFET 平方律/AC/瞬态、`.param`/`.model`、SPICE 往返、种子电路电气验证）；前端 eslint/build 全绿，**18 个 node 测试通过**，并新增撤销/重做与波形工具测试。
 
 ---
 
@@ -65,9 +66,9 @@ backend/app/simulation/matrix.py
 
 ### 1.2 验收标准
 
-- 80 节点基准：稀疏版 AC 中位耗时低于 dense 版（复用现有 `benchmarks/solver.py` 并新增 5000 节点 case）。
+- 1000 段电阻网络 AC 基准（241 点）与 5000 节点 / 5001 元件 DC case 均可运行；见 `benchmarks/solver.py` 与 `backend/tests/test_sparse_scale.py`。
 - 5000 节点电阻网络 DC 可解（内存 < 500MB）。
-- 全部 48 项现有测试通过（结果与 dense 一致到 1e-9 相对误差）。
+- 现有全部数值回归测试通过（结果与 dense 一致到 1e-9 相对误差）；当前为 125 项 + 24 个子测试。
 
 ### 1.3 风险
 
@@ -122,7 +123,7 @@ backend/app/simulation/breakpoints.py  （断点集合，取代/增强 time_grid
 
 ## 3. 收敛控制与非线性框架（P1，M）
 
-**现状**：`opamp.py` 里硬编码 Newton（外层 100、阻尼二分 40、容差 `1e-9`）；无 gmin/source stepping；非线性只有运放。
+**现状（本方案落地前）**：`opamp.py` 里硬编码 Newton（外层 100、阻尼二分 40、容差 `1e-9`）；无 gmin/source stepping；非线性只有运放。本轮已补 `SolverOptions`、gmin 和 source stepping。
 
 ### 3.1 方案：通用 Newton + 同伦连续
 
@@ -135,8 +136,8 @@ backend/app/simulation/nonlinear.py（新）
 
 - **容差参数化**：把 `1e-9` 等替换为 settings 可选项；`vntol` 与 `reltol` 语义对齐 SPICE。
 - **gmin stepping**：收敛失败时，给每个节点对地并接极小电导 `gmin`（默认 1e-12），从 `gmin_scale=1e-6` 逐步逼近 `1`，作为最后手段。
-- **source stepping**：把所有独立源乘 `λ`，从 `λ=0.01` 逐步 `→1`，用上一解作初值，专治正反馈/多稳态启动。
-- **迭代诊断**：返回 `convergence: {iterations, method, gmin_scale, source_scale}`，供前端提示与调试（响应模型加可选字段）。
+- **source stepping**：把所有独立源乘 `λ`，从 `λ=0.1` 逐步 `→1`，用上一解作初值。已落地为 `dc_solve` 在 Newton/gmin 失败后的自动重试。
+- **迭代诊断**：返回 `convergence: {iterations, method, gmin_scale, source_scale}`，供前端提示与调试（响应模型加可选字段）。仍未做。
 - **接口统一**：`opamp.py` 的 `solve()` 重构成 `nonlinear.solve(A, z, devices, ...)`，运放只是 `devices` 的一种“非线性器件接口”（`stamp_linear` / `jacobian_rhs(x)` / `update_state`）。这是 §4 器件框架的起点。
 
 ### 3.2 验收标准
@@ -173,9 +174,9 @@ backend/app/simulation/devices/
 
 ### 4.2 阶段二：BJT + MOSFET Level 1（L）
 
-- **BJT（Gummel-Poon 简化 / Ebers-Moll）**：`Ic = Is·(exp(Vbe/(Nf·Vt)) - exp(Vbc/(Nr·Vt)))`，基区电荷 `Qb`，结电容 Cje/Cjc。电流用“三个端子的电流源 + 两个结电容”。
-- **MOSFET Level 1（Shichman-Hodges）**：阈值 `Vth`、线性/饱和区连续，栅电容 Cox 与交叠电容。瞬态用**电荷模型**（Meyer 或更简单的分段电荷）避免电荷不守恒导致的错误。
-- 全部参数走 `.model` 卡片（§5），前端属性面板新增对应模型选择器。
+- **BJT（Gummel-Poon 简化 / Ebers-Moll）**：仍未开始。
+- **MOSFET Level 1（Shichman-Hodges）**：✅ 已实现 NMOS/PMOS，截止/线性/饱和区连续，DC/AC/瞬态；`gm`、`gds` 和固定 `Cgs`/`Cgd` 进入小信号与瞬态 companion。`KP` 按有效 β 处理，未乘 W/L；体效应与反向导电未建模。
+- 参数走 `.model` 卡片（§5），前端属性面板已有 MOSFET 类型和参数编辑，并新增共源放大模板。
 
 ### 4.3 阶段三：厂商宏模型 / BSIM（XXL，可延后）
 
@@ -215,7 +216,7 @@ backend/app/spice/
 ### 5.2 验收标准
 
 - 现有全部 SPICE 解析/导出/往返语义测试通过。
-- 新增：`.param` 表达式、`.subckt` 两级嵌套实例、`.include` 相对路径、SIN/PULSE 文本 → 与 JSON 等价路径结果一致。
+- ✅ 新增：`.param` 表达式（含前向引用/循环检测）、`.model`（NMOS/PMOS/D）、SIN/PULSE 文本 → 与 JSON 等价路径结果一致。`.subckt`/`.include` 仍未做。
 - 模糊/边界：非法表达式、循环 `.include`、子电路名冲突都要明确报错（不静默）。
 
 ---
@@ -232,8 +233,7 @@ backend/app/spice/
 
 - 用 lifespan 替代 `@app.on_event`。
 - 统一 `/simulate` 与 `/simulate/spice` 的**资源限制**（`pydantic` 校验 + 运行时检查）：
-  - 元件数 ≤ 500（JSON 与 SPICE 一致，或统一提升到一个可配置值并配合稀疏求解）。
-  - 非地节点数 ≤ 5000（防止 dense/稀疏超限）。
+  - 元件数 ≤ 10000、非地节点数 ≤ 5000（JSON 与 SPICE 一致，配合稀疏求解）。
   - 请求体 ≤ 1MB（已有）、瞬态/AC 点数 ≤ 200000（已有）。
 - **计算超时与并发**：`run_in_threadpool` 已隔离阻塞；再加“单进程最大并发仿真数”信号量（如 2），超出的排队或立即 429；超时用线程无法强杀，改在求解器内部检查“预算步数/时间”并抛错（协作式取消）。
 - **鉴权/限流**：本地单机默认无需登录，但加：
@@ -270,21 +270,25 @@ backend/app/spice/
 
 ## 8. 前端（P2，M–L）
 
-### 8.1 撤销/重做（M）
+### 8.1 撤销/重做（M）✅
 
-- 用 zustand 中间件 **zundo**（或自实现 command 栈）对 `circuitStore` 的关键 mutation（add/move/rotate/delete/wire/load）做快照历史。
+- 已在 `circuitStore` 内实现快照历史（上限 100，拖动/连续输入 800 ms 合并），支持 Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y 与工具栏按钮；`loadFromData` 重置历史。
+- 原方案：用 zustand 中间件 **zundo**（或自实现 command 栈）对 `circuitStore` 的关键 mutation（add/move/rotate/delete/wire/load）做快照历史。
 - 快照应存**不可变引用**（当前 store 已经用 `{...s.elements}` 生成新对象，天然适配），避免深拷贝大对象；`nodes` 可不在历史中（可由 elements/wires 重算）。
 - 快捷键 Ctrl+Z / Ctrl+Shift+Z；历史深度上限（如 100）。
 
-### 8.2 波形面板专业化（M）
+### 8.2 波形面板专业化（M）✅（局部放大未做）
 
-- **游标/测量**：自绘 overlay（或换 ECharts，其内置 dataZoom + 游标更成熟），支持两条游标读 Δx/Δy。
-- **AC 显示**：Y 轴可选 `线性 / dB`，相位单独切换（`node_voltages_phase` 已就绪，前端未用）。
-- **大数据降采样**：>10000 点用 **LTTB**（largest-triangle-three-buckets）抽稀，hover 时局部放大原始数据。
-- **导出**：`导出 CSV`（后端 `cli.write_csv` 已有同款逻辑，前端直接复用结果）。
-- **修正节点标注**：`CircuitCanvas.tsx` 里 `vals[0]` 改为按 mode 取（DC 取第 0 点；AC 取某频点的 mag+phase；瞬态取游标时刻或末点）。
+- **游标/测量**：已加单游标（放置/拖动/清除），显示光标时刻及各信号读数；双游标 Δx/Δy 未做。
+- **AC 显示**：✅ 线性幅值 / dB / 相位切换。
+- **大数据降采样**：✅ >4000 点用 LTTB 抽稀；hover 局部放大未做。
+- **导出**：✅ CSV 导出（含 AC 幅值/相位列）。
+- **修正节点标注**：✅ `CircuitCanvas.tsx` 按 mode/光标取样，不再固定 `vals[0]`。
 
-### 8.3 编辑器能力补齐（M）
+### 8.3 编辑器能力补齐（M）🟡
+
+- ✅ 旋转、删除、撤销/重做、模式感知标注；二极管/MOSFET 元件与共源模板。
+- ⬜ 复制/粘贴、框选多选、对齐/等距分布、元件库搜索、镜像。
 
 - 复制/粘贴（含内部剪贴板）、框选多选、对齐/等距分布、元件库搜索、旋转/镜像（R 已有，加 flip）。
 - 元件与导线吸附：已有 grid 吸附，补“端点/中点”磁吸。
@@ -363,21 +367,29 @@ backend/app/spice/
 第 1 批（P0） ✅ 已完成
   §9 工程质量/CI  →  §6 部署/资源保护  →  §7 持久化
 
-第 2 批（P1） ✅ 已完成（除高阶 BDF 与 source stepping）
+第 2 批（P1） ✅ 已完成（除高阶 BDF 与梯形振荡抑制）
   §1 稀疏求解  →  §3 收敛控制  →  §2 自适应步长  →  §4.1 二极管/受控源
 
 第 3 批（P2） 🚧 进行中
-  §5 SPICE 解析扩展（仅器件卡片已做） →  §4.2 BJT/MOSFET →  §8 前端 →  §11 分析扩展
+  §5 SPICE 解析扩展（器件卡片、.param/.model、SIN/PULSE ✅；.subckt/.include ⬜）
+  →  §4.2 MOSFET Level-1 ✅ / BJT ⬜  →  §8 前端（undo/redo、波形 ✅；i18n/E2E ⬜）
+  →  §11 分析扩展（.dc/.meas/.noise/.tf）⬜
 
 第 4 批（视战略）
   §10 桌面打包完善 →  §4.3 宏模型/BSIM（或 §12 的集成路线）
 ```
 
-**建议的下一步**（按性价比排序）：
+**已完成的下一步**（本轮）：
 
-1. §8 前端 undo/redo（见效快、风险低）。
-2. §5 的 `.param`/`.model` 表达式引擎（解锁厂商模型对接）。
-3. §4.2 二极管之外的首个半导体（BJT 或 MOSFET Level 1）。
+1. ✅ §8 前端 undo/redo。
+2. ✅ §5 的 `.param`/`.model` 表达式引擎，并顺带补文本 `SIN`/`PULSE`。
+3. ✅ §4.2 首个半导体：MOSFET Level 1（NMOS/PMOS）。
+
+**建议的后续**：
+
+1. `.subckt` / `.include` 展开与厂商宏模型，随后评估 ngspice 集成（§12）。
+2. BDF2–5 与梯形振荡抑制，补刚性问题。
+3. BJT（Ebers-Moll）与 `.dc` 扫描 / `.meas` 后处理。
 
 ---
 

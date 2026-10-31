@@ -12,12 +12,14 @@ const COMPONENTS: { type: ComponentType; label: string; icon: string }[] = [
   { type: "voltage_source", label: "电压源", icon: "V" },
   { type: "current_source", label: "电流源", icon: "I" },
   { type: "opamp", label: "运算放大器", icon: "▷" },
+  { type: "mosfet", label: "MOSFET", icon: "MOS" },
+  { type: "diode", label: "二极管", icon: "▷|" },
   { type: "ground", label: "接地", icon: "⏚" },
 ];
 
 export function Toolbar() {
   const { toolMode, pendingType, setTool } = useUIStore();
-  const { clearAll } = useCircuitStore();
+  const { clearAll, undo, redo, past, future } = useCircuitStore();
 
   const btn = (label: string, active: boolean, onClick: () => void, title?: string) => (
     <button
@@ -47,6 +49,11 @@ export function Toolbar() {
       background: "#fff", borderBottom: "1px solid #e2e8f0", flexWrap: "wrap",
     }}>
       <span style={{ fontSize: 12, color: "#94a3b8", marginRight: 4 }}>工具</span>
+      {btn("↶ 撤销", false, undo, "撤销 [Ctrl+Z]")}
+      {btn("↷ 重做", false, redo, "重做 [Ctrl+Shift+Z]")}
+      <span style={{ fontSize: 11, color: "#94a3b8" }}>{past.length}/{future.length}</span>
+
+      <div style={{ width: 1, height: 24, background: "#e2e8f0", margin: "0 4px" }} />
       {btn("选择 (S)", toolMode === "select", () => setTool("select"), "选择/移动 [S]")}
       {btn("导线 (W)", toolMode === "wire", () => setTool("wire"), "绘制导线 [W]")}
       {btn("平移", toolMode === "pan", () => setTool("pan"), "平移画布")}

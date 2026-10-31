@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .dc_analysis import dc_solve
-from .devices import diode_current
+from .devices import diode_current, mosfet_current
 from .mna import _eval_source, _idx, build_mna_transient
 from .opamp import output_current, solve
 from .time_grid import transient_breakpoints
@@ -52,6 +52,15 @@ def transient_sim(
             state[f"op_{el.id}"] = v0.get(el.node_out, 0.0) - el.output_resistance * j0[el.id]
         elif el.type == "inductor":
             state[f"ind_{el.id}"] = {"v": va - vb, "i": j0.get(el.id, 0.0)}
+        elif el.type == "mosfet":
+            for suffix, na, nb, capacitance in (
+                ("cgs", el.node_g, el.node_b, el.mos_cgs),
+                ("cgd", el.node_g, el.node_a, el.mos_cgd),
+            ):
+                if capacitance:
+                    state[f"mos_{el.id}_{suffix}"] = {
+                        "v": v0.get(na, 0.0) - v0.get(nb, 0.0), "i": 0.0,
+                    }
 
     t = settings.t_start
     h = settings.t_step
@@ -76,6 +85,9 @@ def transient_sim(
     adaptive = settings.method == "trapezoidal"
     step_budget = 200000
     step_count = 0
+    # After a discontinuity the last two accepted points straddle the jump, so
+    # the predictor-corrector estimate is meaningless for one more step.
+    skip_lte_once = False
 
     while t < settings.t_stop:
         step_count += 1
@@ -106,11 +118,21 @@ def transient_sim(
 
         # Predictor-corrector LTE estimate; reject the step if it exceeds tolerance.
         err = 0.0
-        if adaptive and method == "trapezoidal" and prev_prev is not None and h_prev is not None:
+        if adaptive and not skip_lte_once and method == "trapezoidal" and prev_prev is not None and h_prev is not None:
             x_pred = previous + (h / h_prev) * (previous - prev_prev)
-            err = _lte_error(x, x_pred, settings.reltol, settings.abstol)
+            # Apply the error estimate to node voltages. Branch currents are
+            # algebraic consequences of those voltages; including them makes
+            # the controller chase tiny (but physically irrelevant) currents
+            # through stiff capacitors.
+            err = _lte_error(x[:n], x_pred[:n], settings.reltol, settings.abstol)
             if err > 1.0:
-                h = h * max(0.2, 0.9 * err ** (-1 / 3))
+                new_h = h * max(0.2, 0.9 * err ** (-1 / 3))
+                if new_h < settings.t_step * 1e-9:
+                    raise ValueError(
+                        f"Transient time step underflow at t={t:.12g} s "
+                        f"(h={new_h:.3g} s); check source edges or relax reltol"
+                    )
+                h = new_h
                 continue  # reject and retry with a smaller step
 
         # Accept the step.
@@ -161,6 +183,24 @@ def transient_sim(
             elif el.type == "diode":
                 branch_hist[el.id].append(diode_current(el, va_new - vb_new))
 
+            elif el.type == "mosfet":
+                for suffix, na, nb, capacitance in (
+                    ("cgs", el.node_g, el.node_b, el.mos_cgs),
+                    ("cgd", el.node_g, el.node_a, el.mos_cgd),
+                ):
+                    if not capacitance:
+                        continue
+                    ca = _idx(na, node_index)
+                    cb = _idx(nb, node_index)
+                    v_new = (float(x[ca]) if ca >= 0 else 0.0) - (float(x[cb]) if cb >= 0 else 0.0)
+                    st = state[f"mos_{el.id}_{suffix}"]
+                    i_new = (factor * capacitance / h) * (v_new - st["v"]) - (
+                        st["i"] if factor == 2 else 0.0
+                    )
+                    state[f"mos_{el.id}_{suffix}"] = {"v": v_new, "i": i_new}
+                gate = x[node_index[el.node_g]] if el.node_g in node_index else 0.0
+                branch_hist[el.id].append(mosfet_current(el, float(gate) - vb_new, va_new - vb_new))
+
             elif el.type == "vccs":
                 ca = x[node_index[el.control_node_a]] if el.control_node_a in node_index else 0
                 cb = x[node_index[el.control_node_b]] if el.control_node_b in node_index else 0
@@ -175,6 +215,9 @@ def transient_sim(
         # Reset the predictor history after a discontinuity (Euler restart).
         if method == "euler":
             prev_prev = None
+            skip_lte_once = True
+        else:
+            skip_lte_once = False
 
         # Choose the next step size; never exceed the user's maximum step.
         if adaptive and err > 0.0:

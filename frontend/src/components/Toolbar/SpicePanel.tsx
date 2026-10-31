@@ -6,6 +6,10 @@ import { buildNetlist } from "../../utils/netlist";
 import { exportSpice, parseSpice, SPICE_EXAMPLE } from "../../utils/spice";
 
 const buttonStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", background: "white", cursor: "pointer", fontSize: 12 };
+const CANVAS_TYPES = new Set([
+  "resistor", "capacitor", "inductor", "voltage_source", "current_source",
+  "ground", "opamp", "mosfet", "diode",
+]);
 
 export function SpicePanel() {
   const [open, setOpen] = useState(false);
@@ -37,13 +41,34 @@ export function SpicePanel() {
   const validate = async () => {
     const parsed = await parseSpice(text);
     setError(null);
-    setMessage(`校验通过：${Object.keys(parsed.elements).length} 个元件，分析模式 ${parsed.settings.mode}。`);
+    const unsupported = Object.values(parsed.elements).filter((el) => !CANVAS_TYPES.has(el.type));
+    setMessage(unsupported.length
+      ? `校验通过：${Object.keys(parsed.elements).length} 个元件；其中 ${unsupported.map((el) => el.type).join("、")} 可仿真/导出，但画布暂不支持放置。`
+      : `校验通过：${Object.keys(parsed.elements).length} 个元件，分析模式 ${parsed.settings.mode}。`);
     return parsed;
+  };
+  const simulateText = async () => {
+    setBusy(true);
+    try {
+      const parsed = await validate();
+      await useSimulationStore.getState().runSpiceText(text, parsed.settings);
+      const simulation = useSimulationStore.getState();
+      if (simulation.error) setError(simulation.error);
+      else {
+        setMessage("已直接仿真文本电路；可在下方波形面板添加 V(...) / I(...) 信号。");
+        setOpen(false);
+      }
+    } catch (err) { setError((err as Error).message); }
+    finally { setBusy(false); }
   };
   const apply = async (run: boolean) => {
     setBusy(true);
     try {
       const parsed = await validate();
+      const unsupported = Object.values(parsed.elements).filter((el) => !CANVAS_TYPES.has(el.type));
+      if (unsupported.length) {
+        throw new Error(`画布暂不支持 ${unsupported.map((el) => el.type).join("、")}；请使用「直接仿真」或下载 .cir`);
+      }
       const circuit = useCircuitStore.getState();
       if ((Object.keys(circuit.elements).length || Object.keys(circuit.wires).length)
         && !confirm("应用文本将替换当前画布并自动排布。未保存的布局和修改会丢失，继续？")) return;
@@ -81,9 +106,11 @@ export function SpicePanel() {
           <button onClick={() => setOpen(false)} style={buttonStyle} aria-label="关闭文本电路">关闭</button>
         </div>
         <p style={{ fontSize: 12, color: "#475569", lineHeight: 1.7 }}>
-          支持 R/C/L、DC/AC 独立源、内置 CS_OPAMP，以及 .op / .ac dec|lin / .tran。
-          后缀 m = 毫，meg = 兆；节点 0 接地。相同节点名表示电气相连。
-          当前不支持 SIN/PULSE、任意 .subckt / .model、.include 或控制脚本；遇到不支持的语句会报行号。
+          支持 R/C/L、DC/AC/SIN/PULSE 独立源、内置 CS_OPAMP、NMOS/PMOS Level-1 MOSFET、
+          二极管与 E/F/G/H 受控源，以及 .op / .ac dec|lin / .tran。
+          支持 .param 表达式、.model 卡片和 .options RELTOL/ABSTOL；后缀 m = 毫，meg = 兆；节点 0 接地。
+          E/F/G/H 受控源可校验、直接仿真和导出，但暂不支持放置到画布。
+          当前不支持 .subckt / .include / .meas / .dc 或控制脚本；遇到不支持的语句会报行号。
           CS_OPAMP 属于本项目模型，外部 SPICE 需要另行提供模型库。
         </p>
         <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0 }}>
@@ -110,6 +137,7 @@ export function SpicePanel() {
         {message && <p role="status" style={{ color: "#047857", fontSize: 12 }}>{message}</p>}
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           <button style={buttonStyle} onClick={() => { setBusy(true); void validate().catch((err: Error) => setError(err.message)).finally(() => setBusy(false)); }}>校验文本</button>
+          <button style={buttonStyle} disabled={isLoading} onClick={() => void simulateText()}>直接仿真</button>
           <button style={buttonStyle} disabled={isLoading} onClick={() => void apply(false)}>应用到画布</button>
           <button style={{ ...buttonStyle, background: "#2563eb", color: "white" }} disabled={isLoading} onClick={() => void apply(true)}>应用并仿真</button>
         </div>

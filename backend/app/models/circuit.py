@@ -29,15 +29,26 @@ class CanvasElement(BaseModel):
     outputMax: float | None = None
     slewRate: float | None = None
     inputOffset: float | None = None
+    mosType: str | None = None
+    mosVto: float | None = None
+    mosKp: float | None = None
+    mosLambda: float | None = None
+    mosCgs: float | None = None
+    mosCgd: float | None = None
+    diodeIs: float | None = None
+    diodeN: float | None = None
     value: float
     label: str
     sourceWaveform: str = "dc"
     acAmplitude: float | None = None
     acPhase: float = 0.0
+    dcValue: float | None = None
     sineFrequency: float | None = None
     sineAmplitude: float | None = None
     sinePhase: float | None = None
     sineOffset: float | None = None
+    sineDelay: float | None = None
+    sineDamping: float | None = None
     pulseLow: float | None = None
     pulseDelay: float | None = None
     pulseRise: float | None = None

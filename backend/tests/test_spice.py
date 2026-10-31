@@ -15,7 +15,7 @@ def test_roundtrip():
     assert rebuilt == parsed
     assert run_simulation(parsed.request).node_voltages['OUT'][0] == pytest.approx(1, abs=.001)
 
-@pytest.mark.parametrize('text', ['.include vendor.lib', 'R1 a 0 0', 'V1 a 0 SIN(0 1 1k)', 'R1 a 0 1k\nr1 a 0 2k'])
+@pytest.mark.parametrize('text', ['.include vendor.lib', 'R1 a 0 0', 'V1 a 0 EXP(0 1 1u 1u 2u 3u)', 'R1 a 0 1k\nr1 a 0 2k'])
 def test_invalid(text):
     with pytest.raises(ValueError, match='第'):
         parse_spice('* test\n' + text)

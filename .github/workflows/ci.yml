@@ -69,6 +69,4 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: |
-          node tests/circuitTemplates.test.cjs
-          node tests/spice.test.cjs
+        run: npm test

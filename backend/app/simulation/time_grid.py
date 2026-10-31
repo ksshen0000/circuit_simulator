@@ -21,6 +21,10 @@ def _collect_breakpoints(elements, settings):
             continue
         if el.source_waveform == 'step':
             add(0, el, 0.0)
+        if el.source_waveform == 'sine' and el.sine_delay > 0:
+            # The delayed sine starts at phase ``sine_phase`` at the delay
+            # instant, which can be a jump if the phase is nonzero.
+            add(el.sine_delay, el, el.sine_offset)
         if el.source_waveform != 'pulse':
             continue
         period = el.pulse_period or 1.0
@@ -31,19 +35,29 @@ def _collect_breakpoints(elements, settings):
             raise ValueError('Too many pulse periods for transient analysis')
         for cycle in range(first, last + 1):
             base = el.pulse_delay + cycle * period
-            points = [base, base + el.pulse_rise, base + el.pulse_rise + width,
-                      base + el.pulse_rise + width + el.pulse_fall, base + period]
+            rise_end = base + el.pulse_rise
+            fall_start = rise_end + width
+            fall_end = fall_start + el.pulse_fall
+            points = [base, rise_end, fall_start, fall_end, base + period]
             for point in points:
                 add(point)
             # Retain at least one interior sample in each nonzero pulse segment.
             for a, b in zip(points, points[1:], strict=False):
                 if b > a:
                     add(a + (b - a) / 2)
-            if el.pulse_rise == 0:
-                previous = el.value if cycle > 0 and width == period else el.pulse_low
-                add(base, el, previous)
-            if el.pulse_fall == 0:
-                add(base + el.pulse_rise + width, el, el.value)
+            # Register the left-hand value at every edge boundary. Besides
+            # resolving true jumps, this forces an implicit-Euler restart at
+            # slope discontinuities (finite rise/fall), where the
+            # predictor-corrector LTE estimate is unreliable.
+            previous = el.value if cycle > 0 and width == period else el.pulse_low
+            add(base, el, previous)
+            if el.pulse_rise > 0:
+                add(rise_end, el, el.value)
+            if el.pulse_fall > 0:
+                add(fall_start, el, el.value)
+                add(fall_end, el, el.pulse_low)
+            else:
+                add(fall_start, el, el.value)
     return times, jumps
 
 

@@ -44,6 +44,20 @@ export function PropertyPanel() {
     </div>
   );
 
+  const mosTypeField = (
+    <div style={{ marginBottom: 8 }}>
+      <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 2 }}>类型</label>
+      <select
+        value={el.mosType ?? "nmos"}
+        onChange={(e) => updateElement(id, { mosType: e.target.value as "nmos" | "pmos" })}
+        style={{ width: "100%", padding: "3px 6px", border: "1px solid #e2e8f0", borderRadius: 4, fontSize: 12 }}
+      >
+        <option value="nmos">NMOS</option>
+        <option value="pmos">PMOS</option>
+      </select>
+    </div>
+  );
+
   const VALUE_LABELS: Record<string, string> = {
     resistor: "电阻 (Ω)", capacitor: "电容 (F)", inductor: "电感 (H)",
     voltage_source: "DC 电压 / 阶跃高值 (V)", current_source: "DC 电流 / 阶跃高值 (A)", ground: "-",
@@ -53,12 +67,14 @@ export function PropertyPanel() {
     <div style={{ padding: 12, fontSize: 12 }}>
       <div style={{ fontWeight: 600, marginBottom: 10, color: "#1e293b" }}>{el.label} — {el.type}</div>
 
-      {el.type !== "ground" && el.type !== "opamp" && numField(VALUE_LABELS[el.type] ?? "值", "value", 0.001)}
+      {el.type !== "ground" && el.type !== "opamp" && el.type !== "mosfet" && el.type !== "diode"
+        && numField(VALUE_LABELS[el.type] ?? "值", "value", 0.001)}
 
       {(el.type === "voltage_source" || el.type === "current_source") && (
         <>
           {numField("AC 小信号幅值", "acAmplitude", 0.1)}
           {numField("AC 相位 (°)", "acPhase", 1)}
+          {numField("DC 值（留空沿用主值）", "dcValue", 0.1)}
           {selectField("波形", "sourceWaveform", ["dc", "sine", "pulse", "step"])}
           {el.sourceWaveform === "sine" && (
             <>
@@ -66,6 +82,8 @@ export function PropertyPanel() {
               {numField("瞬态偏移", "sineOffset", 0.1)}
               {numField("频率 (Hz)", "sineFrequency", 1)}
               {numField("瞬态相位（留空沿用 AC）", "sinePhase", 1)}
+              {numField("延迟 (s)", "sineDelay")}
+              {numField("阻尼 (1/s)", "sineDamping")}
             </>
           )}
           {el.sourceWaveform === "pulse" && (
@@ -80,6 +98,24 @@ export function PropertyPanel() {
           )}
         </>
       )}
+
+      {el.type === "diode" && <>
+        <p style={{ color: "#64748b", fontSize: 11 }}>阳极 = 端子 A，阴极 = 端子 B。Shockley 指数模型。</p>
+        {numField("饱和电流 IS (A)", "diodeIs", 1e-15)}
+        {numField("发射系数 N", "diodeN", 0.1)}
+      </>}
+
+      {el.type === "mosfet" && <>
+        <p style={{ color: "#64748b", fontSize: 11 }}>
+          漏极 = 端子 A，源极 = 端子 B，栅极 = 第三端。Level-1 Shichman-Hodges 模型，体效应与反向导电未建模。
+        </p>
+        {mosTypeField}
+        {numField("阈值电压 VTO (V)", "mosVto", 0.1)}
+        {numField("跨导参数 KP (A/V²)", "mosKp", 1e-4)}
+        {numField("沟道长度调制 λ (1/V)", "mosLambda", 0.001)}
+        {numField("栅源电容 Cgs (F)", "mosCgs", 1e-12)}
+        {numField("栅漏电容 Cgd (F)", "mosCgd", 1e-13)}
+      </>}
 
       {el.type === "opamp" && <>
         <p style={{ color: "#64748b", fontSize: 11 }}>左上 +，左下 −，右侧输出。电源用对地输出上下限表示。</p>

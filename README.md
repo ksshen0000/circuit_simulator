@@ -1,6 +1,6 @@
 # 电路仿真器
 
-React 电路编辑器 + FastAPI / NumPy 改进节点分析（MNA）求解器。支持 DC 工作点、AC 扫频、瞬态，以及可接线的非理想运算放大器。
+React 电路编辑器 + FastAPI / NumPy 改进节点分析（MNA）求解器。支持 DC 工作点、AC 扫频、瞬态、可接线的非理想运算放大器、二极管、线性受控源和 Level-1 MOSFET，以及 SPICE 文本中的 `.param` 表达式、`.model` 卡片和 `SIN` / `PULSE` 源。
 
 ## 导航
 
@@ -72,18 +72,24 @@ RL out 0 10k
 | 内容 | 支持格式 |
 | --- | --- |
 | 电阻、电容、电感 | `R/C/L名称 节点A 节点B 数值`，数值必须为正 |
-| 电压源、电流源 | `V/I名称 节点A 节点B [DC 值] [AC 幅值 [相位]]`，也可直接写一个 DC 数值 |
+| 电压源、电流源 | `V/I名称 节点A 节点B [DC 值] [AC 幅值 [相位]] [SIN(...) 或 PULSE(...)]`，也可直接写一个 DC 数值 |
+| 正弦 / 脉冲源 | `SIN(偏移 幅值 频率 [延迟 [阻尼 [相位]]])`、`PULSE(低值 高值 [延迟 上升 下降 宽度 周期])` |
 | 运放 | `X名称 同相节点 反相节点 输出节点 CS_OPAMP [参数=值 …]` |
+| 二极管 | `D名称 阳极 阴极 [模型名] [IS=…] [N=…]` |
+| MOSFET | `M名称 漏 栅 源 模型名 [VTO=… KP=… LAMBDA=… CGSO=… CGDO=…]`，需先定义 `.model 模型名 NMOS 或 PMOS (...)` |
+| 受控源 | `E/G名称 n+ n- 控制+ 控制- 增益`、`F/H名称 n+ n- 控制电压源名 增益` |
+| 模型与参数 | `.param 名称=表达式`、`.model 名称 NMOS/PMOS/D (KEY=VALUE …)`；表达式支持四则、`pi`、`sqrt/exp/log/sin/min/max` 等白名单函数，可用 `{...}` 显式包围；`.param` 支持空格和函数参数逗号 |
 | DC 工作点 | `.op` |
 | AC 扫频 | `.ac dec 每十倍频点数 起始频率 结束频率`，或 `.ac lin 总点数 起始频率 结束频率` |
 | 瞬态 | `.tran 步长 结束时间 [0]`；目前只支持开始时间 0、梯形积分 |
+| 瞬态容差 | `.options RELTOL=… ABSTOL=…`，作用于自适应步长误差估计 |
 | 注释、续行、标题 | `*` 整行注释，`;` / `$` 行尾注释，`+` 续行，`.title 名称` |
 
 每个文件只支持一种分析，未写分析命令时默认 `.op`。请用 `* 标题` 或 `.title 标题` 开头；不解析裸标题行。支持的数值后缀为 `t/g/meg/k/m/u/n/p/f/mil`，按 SPICE 规则不区分大小写：**`M` 也是毫，兆必须写 `meg`**。支持科学记数法，`0` 和 `GND` 均视为接地，名称不区分大小写。未指定 AC 的文字电源默认 AC 幅值为零。
 
 `CS_OPAMP` 是本项目提供的模型名称，子电路调用形式 `X...` 来自 SPICE，但该模型不是 SPICE 标准内置器件。其参数是 `A0/GBW/RIN/ROUT/VMIN/VMAX/SR/VOS`，对应属性面板的增益、带宽、输入/输出电阻、输出上下限、压摆率、失调。**导出到外部 SPICE 时需要另行提供对应 `.SUBCKT` 模型库**，当前导出文件不会包含该库。
 
-`.param`、表达式、任意 `.subckt` / `.model`、`.include` / `.lib`、控制脚本和 `SIN/PULSE` 源目前会明确报错，不会忽略。包含不支持的波形或设置的画布也会拒绝导出，避免悄悄改变电路行为。当前求解引擎仍是项目自身的 NumPy 求解器。
+画布可直接放置电阻、电容、电感、独立源、运放、二极管和 MOSFET；E/F/G/H 受控源目前只在文本、JSON、CLI 和 HTTP 仿真中支持，把它们应用到画布会被明确拒绝。`.subckt` / `.include` / `.lib`、`.meas` / `.dc` / `.noise`、控制脚本和厂商模型库目前会明确报错，不会忽略。瞬态自定义 `reltol`/`abstol` 通过 `.options` 保留，不再在导出时静默丢弃。表达式中的未知参数、循环引用和未知模型也会报错。包含不支持的波形或设置的画布同样会拒绝导出，避免悄悄改变电路行为。当前求解引擎仍是项目自身的 NumPy/SciPy 求解器。
 
 SPICE 描述电气连接，不包含画布布局。应用文本时将替换画布并自动排布，以**同名节点标签**连接各端子，不自动拉线；这些标签保存后仍有效，移动/旋转元件不会断开命名连接。之后可继续用画布接线；物理导线连接的节点会合并。导出再导入会改变布局，保留原布局请使用原有保存功能。若要交换完整原理图布局，可以使用公开的 [KiCad `.kicad_sch` 格式](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/)，本项目尚未接入。
 
@@ -103,6 +109,7 @@ uv pip install --python backend/.venv/bin/python -r backend/requirements.txt
 ```sh
 cd backend
 .venv/bin/python -m app.cli ../examples/noninverting.cir
+.venv/bin/python -m app.cli ../examples/mosfet-common-source.cir
 .venv/bin/python -m app.cli ../examples/rc-lowpass.cir --format csv -o /tmp/response.csv
 .venv/bin/python -m app.cli ../examples/noninverting.cir --parse-only -o /tmp/request.json
 .venv/bin/python -m app.cli /tmp/request.json
@@ -161,11 +168,38 @@ backend/.venv/bin/python -c 'import json,pathlib; print(json.dumps({"text": path
 | 压摆率 | 500000 V/s | 即 0.5 V/μs，限制内部驱动电压变化 |
 | 输入失调 | 0 V | 加在差分输入上的偏置 |
 
-DC 使用带阻尼的分段线性 Newton 求解处理饱和；AC 使用 `A(s) = A0 / (1 + s A0 / (2π GBW))`。AC 开始前检查 DC 工作点，饱和时返回错误，要求先调整偏置。源属性中的 AC 小信号幅值独立于 DC 值，允许明确设置为零；未指定时沿用源的值。
+DC 使用带阻尼的分段线性 Newton 求解处理饱和；AC 使用 `A(s) = A0 / (1 + s A0 / (2π GBW))`。AC 开始前检查 DC 工作点，饱和时返回错误，要求先调整偏置。源属性中的 AC 小信号幅值独立于 DC 值，允许明确设置为零；未指定时沿用源的值。DC 求解失败时会先尝试 gmin 连续法，再尝试独立源逐步升压（source stepping）。
 
-瞬态的 RLC 元件可选隐式 Euler 或梯形积分，运放主极点采用隐式 Euler，并叠加压摆率和饱和限制。第一个样本是开始时刻之前的工作点（因此阶跃源在 t=0 的初值为零），最后一个样本精确到达结束时间。步长应充分小于关注的最快变化时间。时间网格会额外插入已知脉冲边沿和段内采样点，避免跨过整个窄脉冲；不连续边沿的样本采用左侧值，其后首个区间用隐式 Euler 重新启动。该机制不等于基于误差估计的自适应步长，输出时间数组可能不等距。
+瞬态的 RLC 元件可选隐式 Euler 或梯形积分，运放主极点采用隐式 Euler，并叠加压摆率和饱和限制。第一个样本是开始时刻之前的工作点（因此阶跃源在 t=0 的初值为零），最后一个样本精确到达结束时间。梯形积分使用基于节点电压的预测-校正局部截断误差估计自适应调整步长；时间网格还会额外插入已知脉冲边沿、正弦延迟和段内采样点，避免跨过整个窄脉冲。不连续边沿的样本采用左侧值，其后首区间用隐式 Euler 重新启动。输出时间数组可能不等距。
 
 这是行为模型，尚未包含输出限流、输入共模范围、输入偏置电流、噪声、温漂、多极点或特定芯片宏模型，默认参数不代表某个真实型号。正反馈或多稳态电路可能无法收敛，会明确报错。
+
+## MOSFET
+
+工具栏选择「MOSFET」放置。未旋转时右侧上方是漏极 `D`、右侧下方是源极 `S`、左侧是栅极 `G`；属性面板可切换 NMOS/PMOS 并设置 Level-1 参数。
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| 类型 | NMOS | NMOS 或 PMOS；PMOS 的 `VTO` 用负值或幅值均可 |
+| 阈值电压 `VTO` | 1 V | 阈值电压 |
+| 跨导参数 `KP` | 1 mA/V² | 有效 β（未额外乘 W/L） |
+| 沟道长度调制 `LAMBDA` | 0 | 饱和区输出电阻；`ro = 1/(λ·Id)` 的近似 |
+| `Cgs` / `Cgd` | 0 F | 栅源/栅漏电容，用于 AC 和瞬态 |
+
+DC/瞬态使用 Shichman-Hodges 平方律，输入/输出特性在截止区、线性区和饱和区连续；AC 在工作点线性化为 `gm`、`gds` 和栅电容。PMOS 通过电压极性翻转复用同一组方程。当前未建模体效应、反向导电、结电容的非线性、噪声和温度。MOSFET 的 SPICE 卡片需要先写 `.model`，例如：
+
+```spice
+.param vto=1 kp=1m lambda=0.01
+.model NM NMOS (VTO={vto} KP={kp} LAMBDA={lambda} CGSO=1p CGDO=0.1p)
+VDD vdd 0 DC 5
+VG g 0 DC 2 AC 1
+RD vdd d 1k
+M1 d g 0 NM
+.op
+.end
+```
+
+也可载入「标准电路 → MOSFET 共源放大」模板。示例文件见 [examples/mosfet-common-source.cir](examples/mosfet-common-source.cir)。
 
 ## 示例：10 倍同相放大器
 
@@ -194,7 +228,7 @@ curl -s http://localhost:8000/simulate \
 - 电阻、电容、电感和独立源的电流正方向均为端子 A → B，与电流源箭头一致。当前方向已修正旧版电流源方向相反的问题，旧电路若依赖旧方向，需要交换引脚或改变源值符号。
 - 运放电流是流入输出端的电流；向负载供电时通常为负，不包含电源或输入端电流。
 - 所有接地符号共用 GND。悬浮节点、矛盾的理想源、非收敛电路返回错误，不再输出全零 AC 数据或不完整的瞬态曲线。
-- R/L/C 必须为正，频率、时间范围、步长和运放参数经过校验。单次瞬态最多 200000 步。
+- R/L/C 必须为正，频率、时间范围、步长和运放参数经过校验。单次瞬态最多 200000 步；单次仿真最多 10000 个元件、5000 个非地节点。
 
 ## 配置与数据保存
 
@@ -202,7 +236,7 @@ curl -s http://localhost:8000/simulate \
 | --- | --- | --- |
 | `VITE_API_URL` | `http://localhost:8000` | 前端访问后端的地址；通过 Vite 环境变量设置，修改后重启开发服务或重新构建 |
 | `DB_PATH` | `./circuit.db` | HTTP 服务保存画布的 SQLite 文件路径，相对于后端启动工作目录 |
-| `CORS_ORIGINS` | `*` | 后端允许的跨域来源；多个来源用逗号分隔 |
+| `CORS_ORIGINS` | `http://localhost:5173` | 后端允许的跨域来源；多个来源用逗号分隔；公网/任意来源需显式设为 `*` |
 
 `./dev.sh` 从 `backend` 目录启动后端，所以默认数据库是 `backend/circuit.db`。画布保存/加载需要后端在线；CLI 仿真不会访问数据库。SPICE 文本下载保存电气设计，画布保存功能还保留布局；文本导入后的自动排布不等于原图布局。
 
@@ -241,9 +275,11 @@ dev.sh                    一键启动入口
 | 端口 8000 / 5173 被占用 | 关闭之前启动的服务，或分别启动并配置其他端口；脚本不会替你结束其他进程 |
 | 文本编辑器提示无法连接 Python 后端 | 确认后端已启动，并检查 `VITE_API_URL` 与后端端口 |
 | `Singular circuit` | 检查接地、悬浮节点、短接或互相矛盾的理想源 |
+| `Floating node(s) ...` | 节点没有到地的直流通路；MOSFET 栅极需要偏置电阻/电压源，不能只接电容 |
 | 运放 AC 分析提示饱和 | 调整 DC 偏置或输出限值，让工作点处于线性区 |
 | SPICE 中 `1M` 得到 0.001 | SPICE 的 M/m 都表示毫，兆应写 `1meg` |
-| `SIN`、`.include` 或厂商模型被拒绝 | 当前文字入口只实现文档列出的子集；画布/JSON 源波形支持范围更大 |
+| `SIN` / `.param` / `.model` 报错 | 检查括号、花括号、参数名和模型类型；当前支持 `SIN`、`PULSE`、NMOS/PMOS/D 模型 |
+| `.subckt`、`.include` 或厂商模型被拒绝 | 当前文字入口只实现文档列出的子集；厂商模型库尚未接入 |
 | 关闭文本窗口后找不到文件 | 草稿仅保存在当前页面内，持久保存需下载 `.cir`；刷新前先下载 |
 
 ## 验证
@@ -256,11 +292,10 @@ uv pip install --python .venv/bin/python pytest
 .venv/bin/python -m pytest tests -q
 cd ../frontend
 npm run build
-node tests/circuitTemplates.test.cjs
-node tests/spice.test.cjs
+npm test
 ```
 
-测试覆盖解析/导出、Python CLI、API 处理、前端连接关系，以及解析解对照：闭环增益、输出负载、失调、正负饱和、带宽与相位、压摆率、RC/RL 阶跃和电流方向。构建通过不代表任意 SPICE 文件兼容，支持范围以本文的 SPICE 子集和模型说明为准。
+测试覆盖解析/导出、Python CLI、API 处理、前端连接关系与撤销/重做，以及解析解对照：闭环增益、输出负载、失调、正负饱和、带宽与相位、压摆率、RC/RL 阶跃、电流方向、二极管、受控源、MOSFET 平方律/AC 增益和 SPICE 参数/模型/波形往返。构建通过不代表任意 SPICE 文件兼容，支持范围以本文的 SPICE 子集和模型说明为准。
 
 ## 复杂电路验证与性能
 
@@ -277,6 +312,6 @@ OPENBLAS_NUM_THREADS=1 .venv/bin/python -m unittest discover -s tests -p test_co
 
 DC 分析和 AC 分析的偏置工作点使用独立源的 `value`，不取正弦或脉冲在零时刻的瞬时值。瞬态初始化则按开始时刻之前的波形求工作点。正弦源的相位不会再改变 DC 偏置；已有电路如果依赖旧行为，请显式设置 DC 值。
 
-正弦瞬态可单独设置 `sine_amplitude`、`sine_phase`、`sine_offset`。未设置瞬态幅值/相位时沿用原有 `ac_amplitude` / `ac_phase`，幅值仍缺省时使用 `value`；偏移缺省为零。DC 值不会隐式叠加到瞬态正弦上。
+正弦瞬态可单独设置 `sine_amplitude`、`sine_phase`、`sine_offset`、`sine_delay`、`sine_damping`。未设置瞬态幅值/相位时沿用原有 `ac_amplitude` / `ac_phase`，幅值仍缺省时使用 `value`；偏移缺省为零。DC 值不会隐式叠加到瞬态正弦上。SPICE 文本的 `SIN(偏移 幅值 频率 延迟 阻尼 相位)` 映射到同一组字段。
 
-JSON/画布脉冲源可设置 `pulse_low`、`pulse_delay`、`pulse_rise`、`pulse_fall`（默认均为零），`value` 是高电平。`pulse_width` 表示不含边沿的高电平持续时间，上升 + 高电平 + 下降时间不能超过周期。当前 SPICE 文本入口尚未开放这些波形参数。
+JSON/画布脉冲源可设置 `pulse_low`、`pulse_delay`、`pulse_rise`、`pulse_fall`（默认均为零），`value` 是高电平。`pulse_width` 表示不含边沿的高电平持续时间，上升 + 高电平 + 下降时间不能超过周期。SPICE 文本的 `PULSE(低值 高值 延迟 上升 下降 宽度 周期)` 映射到同一组字段。SPICE 波形源可用单独的 `DC` 值指定工作点，缺省为 0；JSON/画布中 `dc_value` 留空时沿用 `value`。`step` 波形尚未提供文本导出，导出时会明确报错。

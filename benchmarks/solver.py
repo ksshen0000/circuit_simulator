@@ -9,10 +9,11 @@ from time import perf_counter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 
-from app.models.netlist import ACSettings, NetlistElement, SimulateRequest
+from app.models.netlist import ACSettings, DCSettings, NetlistElement, SimulateRequest
 from app.simulation.engine import run_simulation
 
 LADDER_SECTIONS = 1000
+DC_NODES = 5000
 
 
 def build_request(count: int) -> SimulateRequest:
@@ -23,6 +24,16 @@ def build_request(count: int) -> SimulateRequest:
         for i in range(count)
     ]
     return SimulateRequest(elements=elements, settings=ACSettings(mode='ac', f_start=1, f_stop=1e6, points_per_decade=40))
+
+
+def build_dc_request(count: int) -> SimulateRequest:
+    elements = [NetlistElement(id='V', type='voltage_source', node_a='n0', node_b='GND', value=1)]
+    elements += [
+        NetlistElement(id=f'R{i}', type='resistor', node_a=f'n{i}',
+                       node_b=f'n{i + 1}' if i < count - 1 else 'GND', value=1000)
+        for i in range(count)
+    ]
+    return SimulateRequest(elements=elements, settings=DCSettings(mode='dc'))
 
 
 request = build_request(LADDER_SECTIONS)
@@ -36,3 +47,10 @@ for _ in range(5):
 
 print(f'{LADDER_SECTIONS} resistors, {len(result.x_values)} AC points; '
       f'median {sorted(times)[2]:.6f} s')
+
+dc_request = build_dc_request(DC_NODES)
+start = perf_counter()
+dc_result = run_simulation(dc_request)
+dc_time = perf_counter() - start
+print(f'{DC_NODES} nodes, {len(dc_request.elements)} elements DC; '
+      f'{dc_time:.6f} s, last node {dc_result.node_voltages[f"n{DC_NODES - 1}"][0]:.6g} V')

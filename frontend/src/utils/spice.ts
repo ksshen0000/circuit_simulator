@@ -1,5 +1,7 @@
 /** API client and canvas adapter only; SPICE syntax is owned by Python. */
-import { type CircuitElement, type ComponentType, opampTerminals, terminalPositions } from "../types/circuit";
+import {
+  type CircuitElement, type ComponentType, mosfetTerminals, opampTerminals, terminalPositions,
+} from "../types/circuit";
 import type { SimulationSettings } from "../types/simulation";
 import type { SimulateRequest } from "./netlist";
 
@@ -45,18 +47,25 @@ export function spiceToCanvas(parsed: ParsedSpiceDTO) {
     const position = { gx: 7 + index % 3 * 16, gy: 5 + Math.floor(index / 3) * 7 };
     const rotation = 0;
     const [terminalA, terminalB, terminalOut] = el.type === "opamp"
-      ? opampTerminals(position, rotation) : terminalPositions(position, rotation);
+      ? opampTerminals(position, rotation)
+      : el.type === "mosfet" ? mosfetTerminals(position, rotation)
+        : terminalPositions(position, rotation);
     elements[el.id] = {
       id: el.id, label: el.id, type: el.type as ComponentType, position, rotation,
       terminalA, terminalB, terminalOut,
-      nodeNames: [el.node_a, el.node_b, ...(el.node_out ? [el.node_out] : [])],
+      nodeNames: el.type === "mosfet"
+        ? [el.node_a, el.node_b, el.node_g ?? "0"]
+        : [el.node_a, el.node_b, ...(el.node_out ? [el.node_out] : [])],
       value: el.value, sourceWaveform: el.source_waveform as CircuitElement["sourceWaveform"],
       acAmplitude: el.ac_amplitude ?? undefined, acPhase: el.ac_phase,
+      dcValue: el.dc_value ?? undefined,
       sineFrequency: el.sine_frequency ?? undefined, pulsePeriod: el.pulse_period ?? undefined,
       pulseWidth: el.pulse_width ?? undefined,
       sineAmplitude: el.sine_amplitude ?? undefined,
       sinePhase: el.sine_phase ?? undefined,
       sineOffset: el.sine_offset ?? undefined,
+      sineDelay: el.sine_delay ?? undefined,
+      sineDamping: el.sine_damping ?? undefined,
       pulseLow: el.pulse_low ?? undefined,
       pulseDelay: el.pulse_delay ?? undefined,
       pulseRise: el.pulse_rise ?? undefined,
@@ -65,6 +74,9 @@ export function spiceToCanvas(parsed: ParsedSpiceDTO) {
       inputResistance: el.input_resistance, outputResistance: el.output_resistance,
       outputMin: el.output_min, outputMax: el.output_max,
       slewRate: el.slew_rate, inputOffset: el.input_offset,
+      mosType: el.mos_type, mosVto: el.mos_vto, mosKp: el.mos_kp,
+      mosLambda: el.mos_lambda, mosCgs: el.mos_cgs, mosCgd: el.mos_cgd,
+      diodeIs: el.diode_is, diodeN: el.diode_n,
     };
   }
   const s = parsed.request.settings;

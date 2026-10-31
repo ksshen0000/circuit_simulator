@@ -11,7 +11,9 @@ export type ComponentType =
   | "voltage_source"
   | "current_source"
   | "ground"
-  | "opamp";
+  | "opamp"
+  | "mosfet"
+  | "diode";
 
 export type SourceWaveform = "dc" | "sine" | "pulse" | "step";
 
@@ -32,15 +34,26 @@ export interface CircuitElement {
   outputMax?: number;
   slewRate?: number;
   inputOffset?: number;
+  mosType?: "nmos" | "pmos";
+  mosVto?: number;
+  mosKp?: number;
+  mosLambda?: number;
+  mosCgs?: number;
+  mosCgd?: number;
+  diodeIs?: number;
+  diodeN?: number;
   value: number;         // SI: Ω / F / H / V / A
   label: string;
   sourceWaveform: SourceWaveform;
   acAmplitude?: number;
   acPhase: number;       // degrees
+  dcValue?: number;
   sineFrequency?: number;
   sineAmplitude?: number;
   sinePhase?: number;
   sineOffset?: number;
+  sineDelay?: number;
+  sineDamping?: number;
   pulseLow?: number;
   pulseDelay?: number;
   pulseRise?: number;
@@ -102,8 +115,20 @@ export function opampTerminals(center: GridPoint, rotation: Rotation): [GridPoin
   return [rotate(-2, -1), rotate(-2, 1), rotate(2, 0)];
 }
 
+// MOSFET A = drain, B = source, third pin = gate. The gate is stored in
+// terminalOut because the saved-canvas schema already has that optional pin.
+export function mosfetTerminals(center: GridPoint, rotation: Rotation): [GridPoint, GridPoint, GridPoint] {
+  const rotate = (x: number, y: number): GridPoint => {
+    const angle = rotation * Math.PI / 180;
+    return { gx: center.gx + Math.round(x * Math.cos(angle) - y * Math.sin(angle)),
+      gy: center.gy + Math.round(x * Math.sin(angle) + y * Math.cos(angle)) };
+  };
+  return [rotate(2, -2), rotate(2, 2), rotate(-2, 0)];
+}
+
 export function elementTerminals(el: CircuitElement): GridPoint[] {
   if (el.type === "ground") return [el.terminalA];
   if (el.type === "opamp") return opampTerminals(el.position, el.rotation);
+  if (el.type === "mosfet") return mosfetTerminals(el.position, el.rotation);
   return [el.terminalA, el.terminalB];
 }

@@ -13,7 +13,9 @@ from __future__ import annotations
 import numpy as np
 import scipy.sparse as sp
 
+from .devices import mosfet_currents
 from .matrix import SparseBuilder
+from .sources import ac_amplitude
 from .sources import evaluate_source as _eval_source
 
 
@@ -30,7 +32,7 @@ def _stamp_conductance(A: SparseBuilder, a: int, b: int, g) -> None:
     A.add(b, a, -g)
 
 
-def _collect_voltage_sources(elements, node_index, n_nodes, t, include_inductors, source_values=None):
+def _collect_voltage_sources(elements, node_index, n_nodes, t, include_inductors, source_values=None, source_scale=1.0):
     """Return (v_sources, col_of) where v_sources are (na, nb, value, id) tuples."""
     source_values = source_values or {}
     v_sources = []
@@ -41,7 +43,8 @@ def _collect_voltage_sources(elements, node_index, n_nodes, t, include_inductors
             v_sources.append((el.node_a, el.node_b, 0.0, el.id))
         elif el.type == "voltage_source":
             col_of[el.id] = n_nodes + len(v_sources)
-            v_sources.append((el.node_a, el.node_b, source_values.get(el.id, _eval_source(el, t)), el.id))
+            v_sources.append((el.node_a, el.node_b,
+                              source_values.get(el.id, _eval_source(el, t)) * source_scale, el.id))
         elif el.type in ("vcvs", "ccvs"):
             col_of[el.id] = n_nodes + len(v_sources)
             v_sources.append((el.node_a, el.node_b, 0.0, el.id))
@@ -99,13 +102,16 @@ def build_mna_dc(
     node_index: dict[str, int],
     n_nodes: int,
     t: float | None = None,
+    source_scale: float = 1.0,
 ) -> tuple[sp.csc_matrix, np.ndarray]:
     """Build MNA for DC operating point.
     Capacitors → open circuit (ignored).
     Inductors → short circuit (0 V voltage source).
     t=None uses declared DC values; an explicit time evaluates waveforms.
     """
-    v_sources, col_of = _collect_voltage_sources(elements, node_index, n_nodes, t, include_inductors=True)
+    v_sources, col_of = _collect_voltage_sources(
+        elements, node_index, n_nodes, t, include_inductors=True, source_scale=source_scale,
+    )
     size = n_nodes + len(v_sources)
     A = SparseBuilder(size, float)
     z = np.zeros(size, dtype=float)
@@ -118,7 +124,7 @@ def build_mna_dc(
             _stamp_conductance(A, a, b, 1.0 / el.value)
 
         elif el.type == "current_source":
-            val = _eval_source(el, t)
+            val = _eval_source(el, t) * source_scale
             if a >= 0:
                 z[a] -= val
             if b >= 0:
@@ -139,10 +145,13 @@ def build_mna_ac(
     n_nodes: int,
     omega: float,
     diode_gd: dict[str, float] | None = None,
+    mos_bias: dict[str, tuple[float, float]] | None = None,
 ) -> tuple[sp.csc_matrix, np.ndarray]:
     """Build complex MNA for AC analysis at angular frequency omega.
 
     diode_gd maps diode ids to their small-signal conductance at the DC bias point.
+    mos_bias maps MOSFET ids to (vgs, vds) at the DC bias point so gm/gds and the
+    gate capacitances can be stamped.
     """
     v_sources, col_of = _collect_voltage_sources(elements, node_index, n_nodes, None, include_inductors=False)
     by_id = {e.id: e for e in elements}
@@ -157,6 +166,27 @@ def build_mna_ac(
         if el.type == "diode" and diode_gd is not None:
             _stamp_conductance(A, a, b, diode_gd.get(el.id, 0.0))
 
+        elif el.type == "mosfet":
+            vgs, vds = (mos_bias or {}).get(el.id, (0.0, 0.0))
+            _id, gm, gds = mosfet_currents(el, vgs, vds)
+            gate = _idx(el.node_g, node_index)
+            _stamp_conductance(A, a, b, gds)
+            if a >= 0:
+                if gate >= 0:
+                    A.add(a, gate, gm)
+                if b >= 0:
+                    A.add(a, b, -gm)
+            if b >= 0:
+                if gate >= 0:
+                    A.add(b, gate, -gm)
+                if b >= 0:
+                    A.add(b, b, gm)
+            if omega != 0:
+                if el.mos_cgs:
+                    _stamp_conductance(A, gate, b, 1j * omega * el.mos_cgs)
+                if el.mos_cgd:
+                    _stamp_conductance(A, gate, a, 1j * omega * el.mos_cgd)
+
         elif el.type == "resistor":
             _stamp_conductance(A, a, b, 1.0 / el.value)
 
@@ -169,8 +199,7 @@ def build_mna_ac(
                 _stamp_conductance(A, a, b, 1.0 / (1j * omega * el.value))
 
         elif el.type == "current_source":
-            amp = el.ac_amplitude if el.ac_amplitude is not None else el.value
-            phasor = amp * np.exp(1j * np.radians(el.ac_phase))
+            phasor = ac_amplitude(el) * np.exp(1j * np.radians(el.ac_phase))
             if a >= 0:
                 z[a] -= phasor
             if b >= 0:
@@ -182,8 +211,7 @@ def build_mna_ac(
         col = n_nodes + k
         el = by_id[el_id]
         if el.type == "voltage_source":
-            amp = el.ac_amplitude if el.ac_amplitude is not None else el.value
-            z[col] = amp * np.exp(1j * np.radians(el.ac_phase))
+            z[col] = ac_amplitude(el) * np.exp(1j * np.radians(el.ac_phase))
         else:
             z[col] = 0.0
         A.add(a, col, 1.0)
@@ -250,6 +278,26 @@ def build_mna_transient(
                 z[a] -= Ieq
             if b >= 0:
                 z[b] += Ieq
+
+        elif el.type == "mosfet":
+            # Gate-source / gate-drain capacitances use the same companion
+            # model as an explicit capacitor. The channel current itself is
+            # stamped by the nonlinear solver.
+            for suffix, na, nb, capacitance in (
+                ("cgs", el.node_g, el.node_b, el.mos_cgs),
+                ("cgd", el.node_g, el.node_a, el.mos_cgd),
+            ):
+                if not capacitance:
+                    continue
+                ga, gb = _idx(na, node_index), _idx(nb, node_index)
+                g_eq = factor * capacitance / h
+                st = state.get(f"mos_{el.id}_{suffix}", {"v": 0.0, "i": 0.0})
+                ieq = (st["i"] if factor == 2 else 0.0) + g_eq * st["v"]
+                _stamp_conductance(A, ga, gb, g_eq)
+                if ga >= 0:
+                    z[ga] += ieq
+                if gb >= 0:
+                    z[gb] -= ieq
 
         elif el.type == "current_source":
             val = source_values.get(el.id, _eval_source(el, t))

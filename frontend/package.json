@@ -12,7 +12,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:icon": "tauri icon public/favicon.svg",
-    "clean": "bash ../scripts/clean-desktop.sh"
+    "clean": "bash ../scripts/clean-desktop.sh",
+    "test": "node tests/circuitTemplates.test.cjs && node tests/spice.test.cjs && node tests/circuitHistory.test.cjs && node tests/waveform.test.cjs"
   },
   "dependencies": {
     "react": "^19.2.6",

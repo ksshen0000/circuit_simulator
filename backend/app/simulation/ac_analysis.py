@@ -3,9 +3,10 @@ from __future__ import annotations
 import numpy as np
 
 from .dc_analysis import dc_solve
-from .devices import diode_conductance
+from .devices import diode_conductance, mosfet_currents
 from .mna import build_mna_ac
 from .opamp import output_current, solve
+from .sources import ac_amplitude
 
 
 def ac_sweep(
@@ -16,20 +17,29 @@ def ac_sweep(
 ) -> tuple[list[float], dict[str, list[float]], dict[str, list[float]], dict[str, list[float]], dict[str, list[float]]]:
     """Return (freqs, node_mag, node_phase, branch_mag, branch_phase)."""
     # Small-signal analysis is only meaningful around an unsaturated bias point.
-    if any(e.type == "opamp" for e in elements):
+    bias: dict[str, float] | None = None
+    if any(e.type in ("opamp", "diode", "mosfet") for e in elements):
         bias, currents = dc_solve(elements, node_index, options=options)
         for el in elements:
             if el.type == "opamp":
                 internal = bias.get(el.node_out, 0) - el.output_resistance * currents[el.id]
                 if internal <= el.output_min + 1e-8 or internal >= el.output_max - 1e-8:
                     raise ValueError(f"{el.id} is saturated at DC; adjust source bias before AC analysis")
-    # Diode small-signal conductance at the DC bias point.
+    # Diode small-signal conductance and MOSFET (vgs, vds) at the DC bias point.
     diode_gd: dict[str, float] | None = None
-    if any(e.type == "diode" for e in elements):
-        bias, _ = dc_solve(elements, node_index, options=options)
+    if bias is not None:
         diode_gd = {
             el.id: diode_conductance(el, bias.get(el.node_a, 0.0) - bias.get(el.node_b, 0.0))
             for el in elements if el.type == "diode"
+        }
+    mos_bias: dict[str, tuple[float, float]] | None = None
+    if bias is not None:
+        mos_bias = {
+            el.id: (
+                bias.get(el.node_g, 0.0) - bias.get(el.node_b, 0.0),
+                bias.get(el.node_a, 0.0) - bias.get(el.node_b, 0.0),
+            )
+            for el in elements if el.type == "mosfet"
         }
 
     n = len(node_index)
@@ -51,7 +61,7 @@ def ac_sweep(
 
     for f in freqs:
         omega = 2 * np.pi * f
-        A, z = build_mna_ac(elements, node_index, n, omega, diode_gd)
+        A, z = build_mna_ac(elements, node_index, n, omega, diode_gd, mos_bias)
 
         x = solve(A, z, elements, node_index, omega=omega, options=options)
 
@@ -77,6 +87,11 @@ def ac_sweep(
                 i = output_current(x, elements, el)
             elif el.type == "diode":
                 i = vab * (diode_gd.get(el.id, 0.0) if diode_gd else 0.0)
+            elif el.type == "mosfet":
+                gate_v = x[node_index[el.node_g]] if el.node_g in node_index else 0
+                vgs = gate_v - b_v
+                _id, gm, gds = mosfet_currents(el, *(mos_bias or {}).get(el.id, (0.0, 0.0)))
+                i = gm * vgs + gds * vab
             elif el.type == "resistor":
                 i = vab / el.value
             elif el.type == "capacitor" and omega != 0:
@@ -84,7 +99,7 @@ def ac_sweep(
             elif el.type == "inductor" and omega != 0:
                 i = vab / (1j * omega * el.value)
             elif el.type == "current_source":
-                amp = el.ac_amplitude if el.ac_amplitude is not None else el.value
+                amp = ac_amplitude(el)
                 i = complex(amp * np.cos(np.radians(el.ac_phase)),
                             amp * np.sin(np.radians(el.ac_phase)))
             elif el.type == "vccs":

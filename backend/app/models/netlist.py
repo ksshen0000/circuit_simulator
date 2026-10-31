@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-MAX_ELEMENTS = 2000
+MAX_ELEMENTS = 10000
 MAX_NODES = 5000
 
 
@@ -15,16 +15,24 @@ class NetlistElement(BaseModel):
     type: Literal[
         "resistor", "capacitor", "inductor",
         "voltage_source", "current_source", "ground", "opamp",
-        "vcvs", "vccs", "cccs", "ccvs", "diode",
+        "vcvs", "vccs", "cccs", "ccvs", "diode", "mosfet",
     ]
     node_a: str
     node_b: str
+    node_g: str | None = None
     value: float = 0.0
     control_node_a: str | None = None
     control_node_b: str | None = None
     control_element: str | None = None
     diode_is: float = Field(default=1e-14, gt=0)
     diode_n: float = Field(default=1.0, gt=0)
+    mos_type: Literal["nmos", "pmos"] = "nmos"
+    mos_vto: float = 1.0
+    mos_kp: float = Field(default=1e-3, gt=0)
+    mos_lambda: float = Field(default=0.0, ge=0)
+    mos_cgs: float = Field(default=0.0, ge=0)
+    mos_cgd: float = Field(default=0.0, ge=0)
+    dc_value: float | None = None
     ac_amplitude: float | None = None
     ac_phase: float = 0.0
     source_waveform: Literal["dc", "sine", "pulse", "step"] = "dc"
@@ -32,6 +40,8 @@ class NetlistElement(BaseModel):
     sine_amplitude: float | None = None
     sine_phase: float | None = None
     sine_offset: float = 0.0
+    sine_delay: float = Field(default=0.0, ge=0)
+    sine_damping: float = Field(default=0.0, ge=0)
     pulse_low: float = 0.0
     pulse_delay: float = Field(default=0.0, ge=0)
     pulse_rise: float = Field(default=0.0, ge=0)
@@ -62,6 +72,10 @@ class NetlistElement(BaseModel):
                 raise ValueError("Opamp requires an output node")
             if not self.output_min < self.output_max:
                 raise ValueError("Output minimum must be below maximum")
+        if self.type == "mosfet" and (not self.node_g or self.node_g == "?"):
+            raise ValueError("MOSFET requires node_g (gate)")
+        if self.type == "mosfet" and self.node_a == self.node_b:
+            raise ValueError("MOSFET drain and source must be different nodes")
         for name in ("sine_frequency", "pulse_period", "pulse_width"):
             value = getattr(self, name)
             if value is not None and value <= 0:
@@ -85,7 +99,7 @@ class ACSettings(BaseModel):
     mode: Literal["ac"]
     f_start: float = Field(default=1.0, gt=0)
     f_stop: float = Field(default=1e6, gt=0)
-    points_per_decade: int = Field(default=20, ge=2, le=10000)
+    points_per_decade: int = Field(default=20, ge=2, le=200000)
     sweep_type: Literal["log", "linear"] = "log"
 
     @model_validator(mode="after")

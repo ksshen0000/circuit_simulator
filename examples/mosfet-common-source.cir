@@ -1,0 +1,11 @@
+* NMOS common-source bias, VTO=1 V, KP=1 mA/V^2
+.param vto=1
+.param kp=1m
+.param lambda=0.01
+.model NM NMOS (VTO={vto} KP={kp} LAMBDA={lambda} CGSO=1p CGDO=0.1p)
+VDD vdd 0 DC 5
+VG g 0 DC 2 AC 1
+RD vdd d 1k
+M1 d g 0 NM
+.op
+.end

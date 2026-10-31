@@ -55,6 +55,21 @@ class ControlledSources(unittest.TestCase):
         self.assertAlmostEqual(result.node_voltages['out'][0], -0.5, places=9)
 
 
+class SpiceExportControlNames(unittest.TestCase):
+    def test_control_element_is_renamed_with_its_source(self):
+        request = SimulateRequest(elements=[
+            E(id="sense", type="voltage_source", node_a="in", node_b="GND", value=1),
+            E(id="R1", type="resistor", node_a="in", node_b="GND", value=1000),
+            E(id="load", type="resistor", node_a="out", node_b="GND", value=1000),
+            E(id="gain", type="cccs", node_a="out", node_b="GND", control_element="sense", value=2),
+        ], settings={"mode": "dc"})
+        parsed = parse_spice(export_spice(request, "cccs"))
+        control = next(el for el in parsed.request.elements if el.type == "cccs")
+        self.assertEqual(control.control_element, "VSENSE")
+        result = run_simulation(parsed.request)
+        self.assertAlmostEqual(result.node_voltages["OUT"][0], 2.0, places=9)
+
+
 class SpiceText(unittest.TestCase):
     def test_parse_and_export_devices(self):
         text = '''* devices

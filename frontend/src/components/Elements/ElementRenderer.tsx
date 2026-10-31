@@ -7,6 +7,8 @@ import { VoltageSourceSymbol } from "./VoltageSourceSymbol";
 import { CurrentSourceSymbol } from "./CurrentSourceSymbol";
 import { OpampSymbol } from "./OpampSymbol";
 import { GroundSymbol } from "./GroundSymbol";
+import { MosfetSymbol } from "./MosfetSymbol";
+import { DiodeSymbol } from "./DiodeSymbol";
 
 interface Props {
   element: CircuitElement;
@@ -25,6 +27,8 @@ const SYMBOL_MAP: Record<string, React.ComponentType<{ isAC?: boolean }>> = {
   current_source: CurrentSourceSymbol,
   ground: GroundSymbol,
   opamp: OpampSymbol,
+  mosfet: MosfetSymbol,
+  diode: DiodeSymbol,
 };
 
 export const ElementRenderer = memo(function ElementRenderer({
@@ -46,7 +50,10 @@ export const ElementRenderer = memo(function ElementRenderer({
     >
       {selected && (
         <rect
-          x={-45} y={-25} width={90} height={50}
+          x={element.type === "mosfet" ? -50 : -45}
+          y={element.type === "mosfet" ? -52 : -25}
+          width={element.type === "mosfet" ? 100 : 90}
+          height={element.type === "mosfet" ? 104 : 50}
           fill="rgba(59,130,246,0.1)"
           stroke="#3b82f6"
           strokeWidth={1 / zoom}
@@ -100,6 +107,8 @@ function formatValue(el: CircuitElement): string {
   if (el.type === "inductor") return formatSI(v, "H");
   if (el.type === "voltage_source") return `${v}V`;
   if (el.type === "current_source") return formatSI(v, "A");
+  if (el.type === "mosfet") return el.mosType === "pmos" ? "PMOS" : "NMOS";
+  if (el.type === "diode") return `IS=${(el.diodeIs ?? 1e-14).toExponential(1)}`;
   return "";
 }
 

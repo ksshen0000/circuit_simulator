@@ -8,6 +8,7 @@ export interface NetlistElementDTO {
   node_a: string;
   node_b: string;
   node_out?: string;
+  node_g?: string;
   open_loop_gain?: number;
   gain_bandwidth?: number;
   input_resistance?: number;
@@ -16,14 +17,25 @@ export interface NetlistElementDTO {
   output_max?: number;
   slew_rate?: number;
   input_offset?: number;
+  mos_type?: "nmos" | "pmos";
+  mos_vto?: number;
+  mos_kp?: number;
+  mos_lambda?: number;
+  mos_cgs?: number;
+  mos_cgd?: number;
+  diode_is?: number;
+  diode_n?: number;
   value: number;
   ac_amplitude?: number;
   ac_phase: number;
+  dc_value?: number;
   source_waveform: string;
   sine_frequency?: number;
   sine_amplitude?: number;
   sine_phase?: number;
   sine_offset?: number;
+  sine_delay?: number;
+  sine_damping?: number;
   pulse_low?: number;
   pulse_delay?: number;
   pulse_rise?: number;
@@ -74,6 +86,7 @@ export function buildNetlist(
       node_a: nodeA,
       node_b: nodeB,
       node_out: el.type === "opamp" ? pointToNode(pins[2], nodes) ?? "?" : undefined,
+      node_g: el.type === "mosfet" ? pointToNode(pins[2], nodes) ?? "?" : undefined,
       open_loop_gain: el.openLoopGain,
       gain_bandwidth: el.gainBandwidth,
       input_resistance: el.inputResistance,
@@ -82,14 +95,25 @@ export function buildNetlist(
       output_max: el.outputMax,
       slew_rate: el.slewRate,
       input_offset: el.inputOffset,
+      mos_type: el.mosType,
+      mos_vto: el.mosVto,
+      mos_kp: el.mosKp,
+      mos_lambda: el.mosLambda,
+      mos_cgs: el.mosCgs,
+      mos_cgd: el.mosCgd,
+      diode_is: el.diodeIs,
+      diode_n: el.diodeN,
       value: el.value,
       ac_amplitude: el.acAmplitude,
       ac_phase: el.acPhase,
+      dc_value: el.dcValue,
       source_waveform: el.sourceWaveform,
       sine_frequency: el.sineFrequency,
       sine_amplitude: el.sineAmplitude,
       sine_phase: el.sinePhase,
       sine_offset: el.sineOffset,
+      sine_delay: el.sineDelay,
+      sine_damping: el.sineDamping,
       pulse_low: el.pulseLow,
       pulse_delay: el.pulseDelay,
       pulse_rise: el.pulseRise,

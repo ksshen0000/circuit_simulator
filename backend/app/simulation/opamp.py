@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import numpy as np
 import scipy.sparse as sp
 
-from .devices import diode_conductance, diode_current
+from .devices import diode_conductance, diode_current, mosfet_currents
 from .matrix import solve_linear
 from .mna import _idx
 
@@ -24,6 +24,7 @@ class SolverOptions:
     itl4: int = 40        # maximum damped backtracking steps
     gmin: float = 1e-12   # final ground conductance used by gmin stepping
     gmin_steps: int = 5   # continuation steps (0 disables the fallback)
+    source_steps: int = 5  # independent-source stepping steps (0 disables it)
 
 
 def _stamp_coo(rows: list[int], cols: list[int], data: list, a: int, b: int, g) -> None:
@@ -49,6 +50,7 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial
     opts = options or SolverOptions()
     devices = [e for e in elements if e.type == "opamp"]
     diodes = [e for e in elements if e.type == "diode"]
+    mosfets = [e for e in elements if e.type == "mosfet"]
     base = len(z)
     size = base + len(devices)
     rhs = np.zeros(size, dtype=z.dtype)
@@ -118,6 +120,40 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial
                     target[a] -= ieq
                 if b >= 0:
                     target[b] += ieq
+            for el in mosfets:
+                a, b, gate = (
+                    _idx(node, node_index)
+                    for node in (el.node_a, el.node_b, el.node_g)
+                )
+                vgs = (x[gate] if gate >= 0 else 0) - (x[b] if b >= 0 else 0)
+                vds = (x[a] if a >= 0 else 0) - (x[b] if b >= 0 else 0)
+                idd, gm, gds = mosfet_currents(el, vgs, vds)
+                # Linearise Id around the current iterate as gds + a VCCS
+                # controlled by Vgs, with the constant part moved to the RHS.
+                _stamp_coo(rows, cols, data, a, b, gds)
+                if a >= 0:
+                    if gate >= 0:
+                        rows.append(a)
+                        cols.append(gate)
+                        data.append(gm)
+                    if b >= 0:
+                        rows.append(a)
+                        cols.append(b)
+                        data.append(-gm)
+                if b >= 0:
+                    if gate >= 0:
+                        rows.append(b)
+                        cols.append(gate)
+                        data.append(-gm)
+                    if b >= 0:
+                        rows.append(b)
+                        cols.append(b)
+                        data.append(gm)
+                ieq = idd - gm * vgs - gds * vds
+                if a >= 0:
+                    target[a] -= ieq
+                if b >= 0:
+                    target[b] += ieq
         jac = sp.coo_matrix((data, (rows, cols)), shape=(size, size), dtype=A.dtype).tocsc()
         return jac, target
 
@@ -147,14 +183,14 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial
                     break
                 alpha *= 0.5
             else:
-                raise ValueError("Opamp operating point did not converge; check feedback and rails")
-        raise ValueError("Opamp operating point did not converge")
+                raise ValueError("Operating point did not converge; check bias, feedback and device models")
+        raise ValueError("Operating point did not converge")
 
     x0 = np.zeros(size, dtype=A.dtype) if initial is None else np.asarray(initial, dtype=A.dtype).copy()
     if x0.shape != (size,) or not np.all(np.isfinite(x0)):
         raise ValueError("Invalid solver initial state")
 
-    if (not devices and not diodes) or omega is not None:
+    if (not devices and not diodes and not mosfets) or omega is not None:
         jac, target = build_system(x0, const_rows, const_cols, const_data)
         return solve_linear(jac, target)
 
