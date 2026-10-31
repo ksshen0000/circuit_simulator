@@ -15,10 +15,16 @@ class NetlistElement(BaseModel):
     type: Literal[
         "resistor", "capacitor", "inductor",
         "voltage_source", "current_source", "ground", "opamp",
+        "vcvs", "vccs", "cccs", "ccvs", "diode",
     ]
     node_a: str
     node_b: str
     value: float = 0.0
+    control_node_a: str | None = None
+    control_node_b: str | None = None
+    control_element: str | None = None
+    diode_is: float = Field(default=1e-14, gt=0)
+    diode_n: float = Field(default=1.0, gt=0)
     ac_amplitude: float | None = None
     ac_phase: float = 0.0
     source_waveform: Literal["dc", "sine", "pulse", "step"] = "dc"
@@ -47,6 +53,10 @@ class NetlistElement(BaseModel):
     def validate_device(self):
         if self.type in ("resistor", "capacitor", "inductor") and self.value <= 0:
             raise ValueError("R, L and C values must be positive")
+        if self.type in ("vcvs", "vccs") and (not self.control_node_a or not self.control_node_b):
+            raise ValueError("Voltage-controlled sources require control_node_a and control_node_b")
+        if self.type in ("cccs", "ccvs") and not self.control_element:
+            raise ValueError("Current-controlled sources require control_element (a voltage source id)")
         if self.type == "opamp":
             if not self.node_out or self.node_out == "?":
                 raise ValueError("Opamp requires an output node")

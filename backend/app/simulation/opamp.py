@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import numpy as np
 import scipy.sparse as sp
 
+from .devices import diode_conductance, diode_current
 from .matrix import solve_linear
 from .mna import _idx
 
@@ -47,6 +48,7 @@ def _stamp_coo(rows: list[int], cols: list[int], data: list, a: int, b: int, g) 
 def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial=None, options=None):
     opts = options or SolverOptions()
     devices = [e for e in elements if e.type == "opamp"]
+    diodes = [e for e in elements if e.type == "diode"]
     base = len(z)
     size = base + len(devices)
     rhs = np.zeros(size, dtype=z.dtype)
@@ -104,6 +106,18 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial
                     cols.append(b)
                     data.append(gain)
                 target[col] = offset
+        if omega is None:
+            for el in diodes:
+                a, b = _idx(el.node_a, node_index), _idx(el.node_b, node_index)
+                vd = (x[a] if a >= 0 else 0) - (x[b] if b >= 0 else 0)
+                gd = diode_conductance(el, vd)
+                idd = diode_current(el, vd)
+                _stamp_coo(rows, cols, data, a, b, gd)
+                ieq = idd - gd * vd
+                if a >= 0:
+                    target[a] -= ieq
+                if b >= 0:
+                    target[b] += ieq
         jac = sp.coo_matrix((data, (rows, cols)), shape=(size, size), dtype=A.dtype).tocsc()
         return jac, target
 
@@ -140,7 +154,7 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial
     if x0.shape != (size,) or not np.all(np.isfinite(x0)):
         raise ValueError("Invalid solver initial state")
 
-    if not devices or omega is not None:
+    if (not devices and not diodes) or omega is not None:
         jac, target = build_system(x0, const_rows, const_cols, const_data)
         return solve_linear(jac, target)
 

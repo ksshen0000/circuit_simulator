@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .dc_analysis import dc_solve
+from .devices import diode_conductance
 from .mna import build_mna_ac
 from .opamp import output_current, solve
 
@@ -22,8 +23,17 @@ def ac_sweep(
                 internal = bias.get(el.node_out, 0) - el.output_resistance * currents[el.id]
                 if internal <= el.output_min + 1e-8 or internal >= el.output_max - 1e-8:
                     raise ValueError(f"{el.id} is saturated at DC; adjust source bias before AC analysis")
+    # Diode small-signal conductance at the DC bias point.
+    diode_gd: dict[str, float] | None = None
+    if any(e.type == "diode" for e in elements):
+        bias, _ = dc_solve(elements, node_index, options=options)
+        diode_gd = {
+            el.id: diode_conductance(el, bias.get(el.node_a, 0.0) - bias.get(el.node_b, 0.0))
+            for el in elements if el.type == "diode"
+        }
+
     n = len(node_index)
-    v_sources = [e for e in elements if e.type == "voltage_source"]
+    v_sources = [e for e in elements if e.type in ("voltage_source", "vcvs", "ccvs")]
 
     if settings.sweep_type == "log":
         start, stop = np.log10(settings.f_start), np.log10(settings.f_stop)
@@ -41,7 +51,7 @@ def ac_sweep(
 
     for f in freqs:
         omega = 2 * np.pi * f
-        A, z = build_mna_ac(elements, node_index, n, omega)
+        A, z = build_mna_ac(elements, node_index, n, omega, diode_gd)
 
         x = solve(A, z, elements, node_index, omega=omega, options=options)
 
@@ -57,7 +67,7 @@ def ac_sweep(
         for el in elements:
             if el.type == "ground":
                 continue
-            if el.type in ("voltage_source",):
+            if el.type in ("voltage_source", "vcvs", "ccvs"):
                 continue
             a_v = x[node_index[el.node_a]] if el.node_a in node_index else 0
             b_v = x[node_index[el.node_b]] if el.node_b in node_index else 0
@@ -65,6 +75,8 @@ def ac_sweep(
 
             if el.type == "opamp":
                 i = output_current(x, elements, el)
+            elif el.type == "diode":
+                i = vab * (diode_gd.get(el.id, 0.0) if diode_gd else 0.0)
             elif el.type == "resistor":
                 i = vab / el.value
             elif el.type == "capacitor" and omega != 0:
@@ -75,6 +87,12 @@ def ac_sweep(
                 amp = el.ac_amplitude if el.ac_amplitude is not None else el.value
                 i = complex(amp * np.cos(np.radians(el.ac_phase)),
                             amp * np.sin(np.radians(el.ac_phase)))
+            elif el.type == "vccs":
+                ca = x[node_index[el.control_node_a]] if el.control_node_a in node_index else 0
+                cb = x[node_index[el.control_node_b]] if el.control_node_b in node_index else 0
+                i = el.value * (ca - cb)
+            elif el.type == "cccs":
+                i = el.value * x[n + next(k for k, e in enumerate(v_sources) if e.id == el.control_element)]
             else:
                 i = complex(0)
 

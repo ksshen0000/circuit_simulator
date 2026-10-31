@@ -13,11 +13,10 @@ from .transient import transient_sim
 def _build_node_index(elements: list, ground_node: str) -> dict[str, int]:
     nodes: set[str] = set()
     for el in elements:
-        if el.node_a != ground_node:
-            nodes.add(el.node_a)
-        if el.node_b != ground_node:
-            nodes.add(el.node_b)
-        if el.type == "opamp" and el.node_out != ground_node:
+        for node in (el.node_a, el.node_b, el.control_node_a, el.control_node_b):
+            if node is not None and node != ground_node:
+                nodes.add(node)
+        if el.type == "opamp" and el.node_out is not None and el.node_out != ground_node:
             nodes.add(el.node_out)
     return {node: idx for idx, node in enumerate(sorted(nodes))}
 
@@ -26,7 +25,12 @@ def run_simulation(req: SimulateRequest, options=None) -> SimulationResult:
     non_ground = [e for e in req.elements if e.type != "ground"]
     if len({e.id for e in non_ground}) != len(non_ground):
         raise ValueError("Component IDs must be unique")
-    if any("?" in (e.node_a, e.node_b, e.node_out) for e in non_ground):
+    terminals = [
+        t
+        for e in non_ground
+        for t in (e.node_a, e.node_b, e.node_out, e.control_node_a, e.control_node_b)
+    ]
+    if any(t is not None and "?" in t for t in terminals):
         raise ValueError("Unconnected component terminal")
     node_index = _build_node_index(non_ground, req.ground_node)
     if len(node_index) > MAX_NODES:

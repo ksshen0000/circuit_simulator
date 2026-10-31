@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .devices import diode_current
 from .mna import _eval_source, build_mna_dc
 from .opamp import output_current, solve
 
@@ -11,7 +12,7 @@ def dc_solve(elements: list, node_index: dict[str, int], t: float | None = None,
     initialization; it does not change the independent-source DC specification.
     """
     n = len(node_index)
-    v_sources = [e for e in elements if e.type in ("voltage_source", "inductor")]
+    v_sources = [e for e in elements if e.type in ("voltage_source", "inductor", "vcvs", "ccvs")]
 
     A, z = build_mna_dc(elements, node_index, n, t=t)
 
@@ -39,5 +40,18 @@ def dc_solve(elements: list, node_index: dict[str, int], t: float | None = None,
 
         elif el.type == "opamp":
             branch_currents[el.id] = float(output_current(x, elements, el))
+
+        elif el.type == "diode":
+            va = node_voltages.get(el.node_a, 0.0)
+            vb = node_voltages.get(el.node_b, 0.0)
+            branch_currents[el.id] = diode_current(el, va - vb)
+
+        elif el.type == "vccs":
+            vca = node_voltages.get(el.control_node_a, 0.0)
+            vcb = node_voltages.get(el.control_node_b, 0.0)
+            branch_currents[el.id] = el.value * (vca - vcb)
+
+        elif el.type == "cccs":
+            branch_currents[el.id] = el.value * branch_currents.get(el.control_element, 0.0)
 
     return node_voltages, branch_currents

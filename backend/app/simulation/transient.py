@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .dc_analysis import dc_solve
+from .devices import diode_current
 from .mna import _eval_source, _idx, build_mna_transient
 from .opamp import output_current, solve
 from .time_grid import transient_breakpoints
@@ -11,6 +12,11 @@ from .time_grid import transient_breakpoints
 def _lte_error(x_corr: np.ndarray, x_pred: np.ndarray, reltol: float, abstol: float) -> float:
     scale = reltol * np.abs(x_corr) + abstol
     return float(np.max(np.abs(x_corr - x_pred) / scale))
+
+
+def _fp_tol(x: float) -> float:
+    """A few ULPs of tolerance for snapping onto forced time points."""
+    return 4.0 * np.spacing(abs(x) if x != 0 else 1.0)
 
 
 def transient_sim(
@@ -27,7 +33,8 @@ def transient_sim(
     fixed-step behaviour. Known source breakpoints are always hit exactly.
     """
     n = len(node_index)
-    v_sources = [e for e in elements if e.type == "voltage_source"]
+    v_sources = [e for e in elements if e.type in ("voltage_source", "vcvs", "ccvs")]
+    vsource_index = {el.id: k for k, el in enumerate(v_sources)}
 
     # DC operating point for initial conditions: evaluate sources at t_start - epsilon
     # so step sources at t_start=0 give 0V initial condition.
@@ -67,10 +74,15 @@ def transient_sim(
         bp_idx += 1
 
     adaptive = settings.method == "trapezoidal"
+    step_budget = 200000
+    step_count = 0
 
     while t < settings.t_stop:
+        step_count += 1
+        if step_count > step_budget:
+            raise ValueError("Transient exceeded 200000 steps; relax reltol or increase t_step")
         next_forced = breakpoints[bp_idx] if bp_idx < len(breakpoints) else settings.t_stop
-        if next_forced <= t:
+        if next_forced - t <= _fp_tol(next_forced):
             bp_idx += 1
             continue
         h = min(h, settings.t_step, next_forced - t)
@@ -81,6 +93,9 @@ def transient_sim(
         method = "euler" if t in jumps else settings.method
         factor = 1.0 if method == "euler" else 2.0
         t_next = t + h
+        # Snap exactly onto a forced point to avoid floating-point drift.
+        if abs(t_next - next_forced) <= _fp_tol(next_forced):
+            t_next = next_forced
         source_values = jumps.get(t_next, {})
 
         A, z = build_mna_transient(elements, node_index, n, t_next, h, state, method, source_values)
@@ -143,6 +158,17 @@ def transient_sim(
             elif el.type == "current_source":
                 branch_hist[el.id].append(float(source_values.get(el.id, _eval_source(el, t))))
 
+            elif el.type == "diode":
+                branch_hist[el.id].append(diode_current(el, va_new - vb_new))
+
+            elif el.type == "vccs":
+                ca = x[node_index[el.control_node_a]] if el.control_node_a in node_index else 0
+                cb = x[node_index[el.control_node_b]] if el.control_node_b in node_index else 0
+                branch_hist[el.id].append(float(el.value * (ca - cb)))
+
+            elif el.type == "cccs":
+                branch_hist[el.id].append(float(el.value * x[n + vsource_index[el.control_element]]))
+
         for k, el in enumerate(v_sources):
             branch_hist[el.id].append(float(x[n + k]))
 
@@ -157,7 +183,7 @@ def transient_sim(
             h = settings.t_step
         h = min(h, settings.t_step)
 
-        while bp_idx < len(breakpoints) and breakpoints[bp_idx] <= t:
+        while bp_idx < len(breakpoints) and breakpoints[bp_idx] - t <= _fp_tol(breakpoints[bp_idx]):
             bp_idx += 1
 
     return times, node_hist, branch_hist
