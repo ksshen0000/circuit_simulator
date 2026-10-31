@@ -5,6 +5,7 @@ import unittest
 from app.models.netlist import NetlistElement as E
 from app.models.netlist import SimulateRequest
 from app.simulation.engine import run_simulation
+from app.spice import export_spice, parse_spice
 
 
 def run(elements, **settings):
@@ -52,6 +53,32 @@ class ControlledSources(unittest.TestCase):
         result = run(elements, mode='dc')
         # V(out) = 500 * I(V1) = 500 * -1e-3 = -0.5 V.
         self.assertAlmostEqual(result.node_voltages['out'][0], -0.5, places=9)
+
+
+class SpiceText(unittest.TestCase):
+    def test_parse_and_export_devices(self):
+        text = '''* devices
+V1 in 0 DC 1
+D1 in out IS=1e-14 N=1
+R1 out 0 1000
+E1 e 0 in 0 2
+G1 g 0 in 0 0.001
+F1 f 0 V1 2
+H1 h 0 V1 500
+.op
+.end
+'''
+        parsed = parse_spice(text)
+        by_id = {el.id: el for el in parsed.request.elements}
+        self.assertEqual(by_id['D1'].type, 'diode')
+        self.assertEqual(by_id['E1'].type, 'vcvs')
+        self.assertEqual(by_id['G1'].type, 'vccs')
+        self.assertEqual(by_id['F1'].type, 'cccs')
+        self.assertEqual(by_id['F1'].control_element, 'V1')
+        self.assertEqual(by_id['H1'].type, 'ccvs')
+        again = parse_spice(export_spice(parsed.request, 'devices'))
+        self.assertEqual({el.id: el.type for el in again.request.elements},
+                         {el.id: el.type for el in parsed.request.elements})
 
 
 class Diode(unittest.TestCase):

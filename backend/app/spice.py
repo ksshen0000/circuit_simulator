@@ -12,7 +12,8 @@ from .models.spice import ParsedSpice
 SCALES = dict(t=1e12, g=1e9, meg=1e6, k=1e3, m=1e-3, u=1e-6, n=1e-9, p=1e-12, f=1e-15, mil=25.4e-6)
 OP_PARAMS = dict(A0="open_loop_gain", GBW="gain_bandwidth", RIN="input_resistance", ROUT="output_resistance",
                  VMIN="output_min", VMAX="output_max", SR="slew_rate", VOS="input_offset")
-KINDS = dict(R="resistor", C="capacitor", L="inductor", V="voltage_source", I="current_source", X="opamp")
+KINDS = dict(R="resistor", C="capacitor", L="inductor", V="voltage_source", I="current_source",
+             X="opamp", D="diode", E="vcvs", G="vccs", F="cccs", H="ccvs")
 
 
 def spice_number(token: str) -> float:
@@ -80,6 +81,26 @@ def _element(tokens) -> NetlistElement:
         if len(tokens) != 4:
             raise ValueError("R/C/L 格式：名称 节点A 节点B 数值")
         values["value"] = _positive(tokens[3])
+    elif prefix == "D":
+        if len(tokens) < 3:
+            raise ValueError("二极管格式：D名称 阳极 阴极 [Is=…] [N=…]")
+        for token in tokens[3:]:
+            pair = token.split("=")
+            key = pair[0].upper()
+            if len(pair) != 2 or key not in ("IS", "N") or key in values:
+                raise ValueError(f"未知或重复二极管参数「{token}」")
+            values["diode_is" if key == "IS" else "diode_n"] = _positive(pair[1])
+    elif prefix in "EG":
+        if len(tokens) != 6:
+            raise ValueError(f"{prefix} 源格式：名称 n+ n- 控制+ 控制- 增益")
+        values["control_node_a"] = _node(tokens[3])
+        values["control_node_b"] = _node(tokens[4])
+        values["value"] = spice_number(tokens[5])
+    elif prefix in "FH":
+        if len(tokens) != 5:
+            raise ValueError(f"{prefix} 源格式：名称 n+ n- 控制电压源名 增益")
+        values["control_element"] = tokens[3].upper()
+        values["value"] = spice_number(tokens[4])
     elif prefix == "X":
         if tokens[4].upper() != "CS_OPAMP":
             raise ValueError("当前仅支持内置三端模型 CS_OPAMP；暂不支持厂商子电路")
@@ -213,6 +234,12 @@ def export_spice(request: SimulateRequest, title: str = "Circuit Simulator") -> 
         if el.type == "opamp":
             params = " ".join(f"{key}={num(getattr(el, field))}" for key, field in OP_PARAMS.items())
             lines.append(f"{name} {pins} {net(el.node_out)} CS_OPAMP {params}")
+        elif el.type == "diode":
+            lines.append(f"{name} {pins} IS={num(el.diode_is)} N={num(el.diode_n)}")
+        elif el.type in ("vcvs", "vccs"):
+            lines.append(f"{name} {pins} {net(el.control_node_a)} {net(el.control_node_b)} {num(el.value)}")
+        elif el.type in ("cccs", "ccvs"):
+            lines.append(f"{name} {pins} {el.control_element} {num(el.value)}")
         elif el.type in ("voltage_source", "current_source"):
             if el.source_waveform != "dc":
                 raise ValueError(f"{el.id}：当前文本格式尚不支持 {el.source_waveform} 波形，导出已停止")
