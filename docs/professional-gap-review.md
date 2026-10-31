@@ -4,6 +4,8 @@
 > 评审方式：通读后端求解内核、SPICE 解析/导出、HTTP API、数据层、前端编辑器与测试，并结合 README / docs 中自述的能力边界。
 > 结论先放前面：这是一个**结构清晰、内核正确、文档认真**的“教学/原型级”电路仿真器；但要达到可交付给专业工程师日常使用（对标 ngspice、LTspice、Falstad、CircuitLab、EasyEDA 仿真）的水平，在**器件模型、数值方法、性能、工程质量、安全与产品化**五个维度仍有显著差距。
 
+> **后续进展（2026-10-30 更新）**：本文档提出的主要差距已在 `feat/production-hardening` 分支逐项落地——工程质量/CI、部署加固、持久化、稀疏求解、收敛控制、自适应步长、受控源+二极管、SPICE 器件卡片、project 分组与经典用例种子均已完成（后端 88 个测试、前端 lint/build 全绿）。具体完成状态见下方 Roadmap 与附录清单的「状态」标注。
+
 ---
 
 ## 一、总体评价
@@ -110,60 +112,60 @@
 
 ## 三、优先级建议（Roadmap）
 
-**P0 —— 达到“可安全交付给用户”的最低线**
+**P0 —— 达到“可安全交付给用户”的最低线**（✅ 全部完成）
 
-1. 修复 `docker-compose.yml`（补两个 Dockerfile）或删除它，避免误导。
-2. 移除死依赖 scipy；为 Python 依赖生成并提交 `uv.lock`；pin 版本。
-3. 建 CI：安装依赖 → 后端 pytest → 前端 build + lint + 单元测试（至少把现有验证自动化）。
-4. 后端加资源保护：`/simulate` 统一元件数/矩阵规模上限、请求体大小限制、计算超时、CORS 收紧、基本速率限制。
-5. 修 FastAPI 废弃的 `on_event`；`health` 检查 DB 可用性。
-6. SQLite 加 schema_version 与迁移；保存时校验 elements/wires 结构。
-7. 提交当前工作区（拆分 commit），保证 `git clone` 可复现。
+1. ✅ 修复 `docker-compose.yml`（补两个 Dockerfile）或删除它，避免误导。
+2. ✅ 移除死依赖 scipy；为 Python 依赖生成并提交 `uv.lock`；pin 版本。
+3. ✅ 建 CI：安装依赖 → 后端 pytest → 前端 build + lint + 单元测试（至少把现有验证自动化）。
+4. ✅ 后端加资源保护：`/simulate` 统一元件数/矩阵规模上限、请求体大小限制、计算超时、CORS 收紧、基本速率限制。
+5. ✅ 修 FastAPI 废弃的 `on_event`；`health` 检查 DB 可用性。
+6. ✅ SQLite 加 schema_version 与迁移；保存时校验 elements/wires 结构。
+7. ✅ 提交当前工作区（拆分 commit），保证 `git clone` 可复现。
 
-**P1 —— 缩小“专业仿真能力”差距**
+**P1 —— 缩小“专业仿真能力”差距**（🟡 大部分完成）
 
-8. 引入**稀疏矩阵求解**（`scipy.sparse.linalg` 或自实现，并把 scipy 变成真正的依赖）+ 一次分解多次回代的 AC 优化。
-9. 瞬态加**基于 LTE 的自适应步长** + 高阶 BDF；为梯形法加振荡抑制。
-10. 增加收敛控制（gmin/source stepping、可调容差）与用户可见的迭代诊断。
-11. 扩展器件：二极管、BJT、MOSFET（Ebers-Moll / Shichman-Hodges）——这是从“教学工具”走向“工程工具”的质变点。
-12. 支持 `.model` / `.subckt` / `.param` / 受控源 / `SIN`/`PULSE` 文本激励，打通厂商模型。
+8. ✅ 引入**稀疏矩阵求解**（`scipy.sparse.linalg` 或自实现，并把 scipy 变成真正的依赖）+ 一次分解多次回代的 AC 优化。
+9. 🟡 瞬态加**基于 LTE 的自适应步长**（已做）+ 高阶 BDF 与梯形振荡抑制（未做）。
+10. 🟡 增加收敛控制（gmin + 可调容差已做；source stepping 未做）。
+11. 🟡 扩展器件：二极管 ✅、BJT/MOSFET ⬜（Ebers-Moll / Shichman-Hodges）。
+12. 🟡 受控源（E/F/G/H）✅；`.model`/`.subckt`/`.param`/文本 `SIN`/`PULSE` ⬜。
 
-**P2 —— 产品化 / 体验**
+**P2 —— 产品化 / 体验**（⬜ 大部分未做）
 
-13. 前端补 undo/redo、复制粘贴、对齐、元件库搜索、框选多选。
-14. 波形面板加游标、dB/相位、数据导出、大数据降采样；修正画布节点标注在 AC/瞬态下取 `vals[0]` 的问题。
-15. i18n（先抽离中文硬编码）、错误边界、E2E 测试、a11y。
-16. 补充 `.meas`、`.noise`、`.tf`、`.dc` 扫描、温度/噪声等分析，使其接近 ngspice 子集。
-17. 桌面版：进程内桥接、单实例、签名/公证、自动更新；补 LICENSE / CHANGELOG / 发布流程。
+13. ⬜ 前端补 undo/redo、复制粘贴、对齐、元件库搜索、框选多选。
+14. ⬜ 波形面板加游标、dB/相位、数据导出、大数据降采样；修正画布节点标注在 AC/瞬态下取 `vals[0]` 的问题。
+15. ⬜ i18n（先抽离中文硬编码）、错误边界、E2E 测试、a11y。
+16. ⬜ 补充 `.meas`、`.noise`、`.tf`、`.dc` 扫描、温度/噪声等分析，使其接近 ngspice 子集。
+17. 🟡 桌面版：已有 Tauri+PyInstaller 骨架；进程内桥接、单实例、签名/公证、自动更新、CHANGELOG 未做；LICENSE ✅ 已补。
 
 ---
 
 ## 四、附录：具体发现清单（供逐条核对）
 
-| # | 位置 | 发现 | 严重度 |
-| --- | --- | --- | --- |
-| 1 | `docker-compose.yml` | 引用不存在的 `backend/Dockerfile`、`frontend/Dockerfile` | 高 |
-| 2 | `requirements.txt` / `circuit_simulator.spec` | scipy 声明但零引用（死依赖） | 中 |
-| 3 | 仓库根 | 无 Python 锁文件（`uv.lock`），依赖 `>=` 不 pin | 中 |
-| 4 | 仓库根 | 无 CI/CD、无 pre-commit、无 Makefile | 高 |
-| 5 | `backend/app/main.py` | `@app.on_event("startup")` 已废弃 | 低 |
-| 6 | `backend/app/main.py` | CORS 默认 `*`；无鉴权/限流 | 高 |
-| 7 | `backend/app/routers/simulation.py` | `/simulate` JSON 路径无元件数上限（SPICE 路径才有 500 上限） | 高 |
-| 8 | `backend/app/db.py` | 无 schema 版本/迁移；elements/wires 为任意 JSON 且不校验 | 中 |
-| 9 | `backend/app/simulation/mna.py` 等 | 稠密矩阵 + 每频点重复 `np.linalg.solve` | 高 |
-| 10 | `backend/app/simulation/transient.py` / `time_grid.py` | 固定步长+断点插值，无自适应 LTE 步长 | 高 |
-| 11 | `backend/app/simulation/opamp.py` | 收敛容差硬编码、无 gmin/source stepping、`output_current` 索引计算脆弱 | 中 |
-| 12 | `backend/app/simulation/opamp.py` / README | 仅单极点行为运放，无噪声/温度/多极点/半导体 | 高 |
-| 13 | `backend/app/spice.py` | 不支持 `.param/.model/.subckt/.include/.meas/.noise` 等 | 高 |
-| 14 | `backend/app/spice.py` | 文本源不支持 SIN/PULSE/EXP/PWL | 中 |
-| 15 | `frontend/package.json` | 无 `test` 脚本；无 E2E | 中 |
-| 16 | `frontend/src/App.tsx` 等 | 内联 style、中文硬编码、无 i18n | 低 |
-| 17 | `frontend/src/store/circuitStore.ts` | 无 undo/redo；每次变更全量重算节点 | 中 |
-| 18 | `frontend/src/components/Canvas/CircuitCanvas.tsx` | 节点电压标注只显示 `vals[0]`（AC/瞬态显示错误） | 中 |
-| 19 | `frontend/src/components/WaveformPanel` | 无游标/测量/dB/导出；全量渲染 | 中 |
-| 20 | `backend/tests/*` | 依赖 pytest 但默认环境不装；unittest discover 会因 `import pytest` 报错 | 低 |
-| 21 | `git status` | 大量未提交改动，仅 2 个 commit，克隆后不可复现当前能力 | 高 |
-| 22 | 仓库根 | 无 LICENSE | 低 |
+| # | 位置 | 发现 | 严重度 | 状态 |
+| --- | --- | --- | --- | --- |
+| 1 | `docker-compose.yml` | 引用不存在的 `backend/Dockerfile`、`frontend/Dockerfile` | 高 | ✅ 已修复 |
+| 2 | `requirements.txt` / `circuit_simulator.spec` | scipy 声明但零引用（死依赖） | 中 | ✅ 已修复（先移除，后由稀疏求解重新引入） |
+| 3 | 仓库根 | 无 Python 锁文件（`uv.lock`），依赖 `>=` 不 pin | 中 | ✅ 已加 uv.lock |
+| 4 | 仓库根 | 无 CI/CD、无 pre-commit、无 Makefile | 高 | ✅ 已加 CI + pre-commit |
+| 5 | `backend/app/main.py` | `@app.on_event("startup")` 已废弃 | 低 | ✅ 已改 lifespan |
+| 6 | `backend/app/main.py` | CORS 默认 `*`；无鉴权/限流 | 高 | 🟡 CORS 已收紧 + 并发信号量；鉴权/限流未做 |
+| 7 | `backend/app/routers/simulation.py` | `/simulate` JSON 路径无元件数上限（SPICE 路径才有 500 上限） | 高 | ✅ 已加 MAX_ELEMENTS/MAX_NODES |
+| 8 | `backend/app/db.py` | 无 schema 版本/迁移；elements/wires 为任意 JSON 且不校验 | 中 | ✅ 已做迁移 + 保存校验 |
+| 9 | `backend/app/simulation/mna.py` 等 | 稠密矩阵 + 每频点重复 `np.linalg.solve` | 高 | ✅ 已改稀疏 SuperLU |
+| 10 | `backend/app/simulation/transient.py` / `time_grid.py` | 固定步长+断点插值，无自适应 LTE 步长 | 高 | ✅ 已加自适应 LTE（高阶 BDF 未做） |
+| 11 | `backend/app/simulation/opamp.py` | 收敛容差硬编码、无 gmin/source stepping、`output_current` 索引计算脆弱 | 中 | 🟡 SolverOptions + gmin 已做；source stepping 未做 |
+| 12 | `backend/app/simulation/opamp.py` / README | 仅单极点行为运放，无噪声/温度/多极点/半导体 | 高 | 🟡 已加二极管+受控源；BJT/MOSFET/噪声/温度未做 |
+| 13 | `backend/app/spice.py` | 不支持 `.param/.model/.subckt/.include/.meas/.noise` 等 | 高 | 🟡 已加 D/E/F/G/H 卡片；其余未做 |
+| 14 | `backend/app/spice.py` | 文本源不支持 SIN/PULSE/EXP/PWL | 中 | ⬜ 未做（JSON 路径已支持部分波形） |
+| 15 | `frontend/package.json` | 无 `test` 脚本；无 E2E | 中 | 🟡 CI 已跑测试；package.json test 脚本与 E2E 未加 |
+| 16 | `frontend/src/App.tsx` 等 | 内联 style、中文硬编码、无 i18n | 低 | ⬜ 未做 |
+| 17 | `frontend/src/store/circuitStore.ts` | 无 undo/redo；每次变更全量重算节点 | 中 | ⬜ 未做 |
+| 18 | `frontend/src/components/Canvas/CircuitCanvas.tsx` | 节点电压标注只显示 `vals[0]`（AC/瞬态显示错误） | 中 | ⬜ 未做 |
+| 19 | `frontend/src/components/WaveformPanel` | 无游标/测量/dB/导出；全量渲染 | 中 | ⬜ 未做 |
+| 20 | `backend/tests/*` | 依赖 pytest 但默认环境不装；unittest discover 会因 `import pytest` 报错 | 低 | ✅ CI 用 `uv sync --extra test` 解决 |
+| 21 | `git status` | 大量未提交改动，仅 2 个 commit，克隆后不可复现当前能力 | 高 | ✅ 已拆分提交（7 + 9 个 commit） |
+| 22 | 仓库根 | 无 LICENSE | 低 | ✅ 已加 MIT |
 
 ---
 
