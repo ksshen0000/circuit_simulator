@@ -55,16 +55,21 @@ class SchemaMigration(unittest.TestCase):
                 init_db()
                 with get_conn() as conn:
                     version = conn.execute("PRAGMA user_version").fetchone()[0]
-                    self.assertEqual(version, 1)
+                    self.assertEqual(version, 2)
+                    projects = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+                    seeded = conn.execute("SELECT COUNT(*) FROM circuits").fetchone()[0]
+                    self.assertEqual(projects, 1)
+                    self.assertEqual(seeded, 3)  # classic example circuits
                     conn.execute(
                         "INSERT INTO circuits (id, name, elements, wires, ground_element_id,"
                         " created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
                         ("1", "n", "{}", "{}", None, "t", "t"),
                     )
-                # Re-running must not fail or reset data.
+                # Re-running must not fail or duplicate the seeded examples.
                 init_db()
                 with get_conn() as conn:
-                    self.assertEqual(conn.execute("SELECT COUNT(*) FROM circuits").fetchone()[0], 1)
+                    self.assertEqual(conn.execute("SELECT COUNT(*) FROM circuits").fetchone()[0], 4)
+                    self.assertEqual(conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 1)
 
 
 if __name__ == "__main__":

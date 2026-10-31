@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
 from .routers.circuits import router as circuit_router
+from .routers.projects import router as project_router
 from .routers.simulation import router as sim_router
 
 
@@ -29,3 +30,4 @@ app.add_middleware(
 
 app.include_router(sim_router)
 app.include_router(circuit_router)
+app.include_router(project_router)

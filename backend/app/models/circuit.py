@@ -56,12 +56,33 @@ class SaveCircuitRequest(BaseModel):
     elements: dict[str, CanvasElement]
     wires: dict[str, CanvasWire]
     ground_element_id: str | None = None
+    project_id: str | None = None
 
 
 class CircuitSummary(BaseModel):
     id: str
     name: str
+    project_id: str | None
     updated_at: str
+
+
+class ProjectCreate(BaseModel):
+    name: str
+
+
+class ProjectSummary(BaseModel):
+    id: str
+    name: str
+    circuit_count: int
+    updated_at: str
+
+
+class ProjectDetail(BaseModel):
+    id: str
+    name: str
+    created_at: str
+    updated_at: str
+    circuits: list[CircuitSummary]
 
 
 class CircuitDetail(BaseModel):
@@ -70,5 +91,6 @@ class CircuitDetail(BaseModel):
     elements: dict[str, Any]
     wires: dict[str, Any]
     ground_element_id: str | None
+    project_id: str | None = None
     created_at: str
     updated_at: str

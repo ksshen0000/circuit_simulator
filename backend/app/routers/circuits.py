@@ -15,12 +15,18 @@ def _now() -> str:
 
 
 @router.get("", response_model=list[CircuitSummary])
-def list_circuits():
+def list_circuits(project_id: str | None = None):
     with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, name, updated_at FROM circuits ORDER BY updated_at DESC"
-        ).fetchall()
-    return [CircuitSummary(id=r["id"], name=r["name"], updated_at=r["updated_at"]) for r in rows]
+        if project_id is None:
+            rows = conn.execute(
+                "SELECT id, name, project_id, updated_at FROM circuits ORDER BY updated_at DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, name, project_id, updated_at FROM circuits WHERE project_id=? ORDER BY updated_at DESC",
+                (project_id,),
+            ).fetchall()
+    return [CircuitSummary(id=r["id"], name=r["name"], project_id=r["project_id"], updated_at=r["updated_at"]) for r in rows]
 
 
 @router.post("", response_model=CircuitDetail, status_code=201)
@@ -30,15 +36,16 @@ def create_circuit(body: SaveCircuitRequest):
     data = body.model_dump(mode="json")
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO circuits (id, name, elements, wires, ground_element_id, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO circuits (id, name, elements, wires, ground_element_id, project_id, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
             (cid, body.name, json.dumps(data["elements"]), json.dumps(data["wires"]),
-             body.ground_element_id, now, now),
+             body.ground_element_id, body.project_id, now, now),
         )
     return CircuitDetail(
         id=cid, name=body.name,
         elements=data["elements"], wires=data["wires"],
         ground_element_id=body.ground_element_id,
+        project_id=body.project_id,
         created_at=now, updated_at=now,
     )
 
@@ -54,6 +61,7 @@ def get_circuit(cid: str):
         elements=json.loads(row["elements"]),
         wires=json.loads(row["wires"]),
         ground_element_id=row["ground_element_id"],
+        project_id=row["project_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -65,10 +73,10 @@ def update_circuit(cid: str, body: SaveCircuitRequest):
     data = body.model_dump(mode="json")
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE circuits SET name=?, elements=?, wires=?, ground_element_id=?, updated_at=?"
+            "UPDATE circuits SET name=?, elements=?, wires=?, ground_element_id=?, project_id=?, updated_at=?"
             " WHERE id=?",
             (body.name, json.dumps(data["elements"]), json.dumps(data["wires"]),
-             body.ground_element_id, now, cid),
+             body.ground_element_id, body.project_id, now, cid),
         )
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Circuit not found")
@@ -77,6 +85,7 @@ def update_circuit(cid: str, body: SaveCircuitRequest):
         id=cid, name=body.name,
         elements=data["elements"], wires=data["wires"],
         ground_element_id=body.ground_element_id,
+        project_id=body.project_id,
         created_at=row["created_at"], updated_at=now,
     )
 
