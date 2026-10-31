@@ -5,7 +5,12 @@ import numpy as np
 from .dc_analysis import dc_solve
 from .mna import _eval_source, _idx, build_mna_transient
 from .opamp import output_current, solve
-from .time_grid import transient_grid
+from .time_grid import transient_breakpoints
+
+
+def _lte_error(x_corr: np.ndarray, x_pred: np.ndarray, reltol: float, abstol: float) -> float:
+    scale = reltol * np.abs(x_corr) + abstol
+    return float(np.max(np.abs(x_corr - x_pred) / scale))
 
 
 def transient_sim(
@@ -14,16 +19,22 @@ def transient_sim(
     settings,
     options=None,
 ) -> tuple[list[float], dict[str, list[float]], dict[str, list[float]]]:
-    """Return (times, node_voltages_history, branch_currents_history)."""
+    """Return (times, node_voltages_history, branch_currents_history).
+
+    Trapezoidal integration uses an adaptive step controller: after each step a
+    predictor-corrector estimate of the local truncation error decides whether to
+    accept the step and how to size the next one. Euler integration keeps the
+    fixed-step behaviour. Known source breakpoints are always hit exactly.
+    """
     n = len(node_index)
     v_sources = [e for e in elements if e.type == "voltage_source"]
 
     # DC operating point for initial conditions: evaluate sources at t_start - epsilon
-    # so step sources at t_start=0 give 0V initial condition
+    # so step sources at t_start=0 give 0V initial condition.
     t_ic = np.nextafter(settings.t_start, -np.inf)
     v0, j0 = dc_solve(elements, node_index, t=t_ic, options=options)
 
-    # Build initial dynamic state from DC solution
+    # Build initial dynamic state from DC solution.
     state: dict = {}
     for el in elements:
         va = v0.get(el.node_a, 0.0)
@@ -35,8 +46,9 @@ def transient_sim(
         elif el.type == "inductor":
             state[f"ind_{el.id}"] = {"v": va - vb, "i": j0.get(el.id, 0.0)}
 
-    h = settings.t_step
     t = settings.t_start
+    h = settings.t_step
+    h_prev: float | None = None
 
     times = [float(t)]
     node_hist = {node: [v0[node]] for node in node_index}
@@ -47,26 +59,55 @@ def transient_sim(
         previous[idx] = v0[node]
     for k, el in enumerate(v_sources + devices):
         previous[n + k] = j0[el.id]
-    grid, jumps = transient_grid(elements, settings)
-    for next_t in grid[1:]:
-        if next_t <= t:
+    prev_prev: np.ndarray | None = None  # solution one step before `previous`
+
+    breakpoints, jumps = transient_breakpoints(elements, settings)
+    bp_idx = 0
+    while bp_idx < len(breakpoints) and breakpoints[bp_idx] <= t:
+        bp_idx += 1
+
+    adaptive = settings.method == "trapezoidal"
+
+    while t < settings.t_stop:
+        next_forced = breakpoints[bp_idx] if bp_idx < len(breakpoints) else settings.t_stop
+        if next_forced <= t:
+            bp_idx += 1
             continue
-        h = next_t - t
+        h = min(h, settings.t_step, next_forced - t)
+        if h <= 0:
+            bp_idx += 1
+            continue
+
         method = "euler" if t in jumps else settings.method
         factor = 1.0 if method == "euler" else 2.0
-        t = next_t
-        source_values = jumps.get(t, {})
-        A, z = build_mna_transient(elements, node_index, n, t, h, state, method, source_values)
+        t_next = t + h
+        source_values = jumps.get(t_next, {})
+
+        A, z = build_mna_transient(elements, node_index, n, t_next, h, state, method, source_values)
         try:
             x = solve(A, z, elements, node_index, state=state, h=h, initial=previous, options=options)
         except ValueError as exc:
-            raise ValueError(f"Transient failed at t={t:.12g} s (step={h:.12g} s): {exc}") from exc
+            raise ValueError(f"Transient failed at t={t_next:.12g} s (step={h:.12g} s): {exc}") from exc
+
+        # Predictor-corrector LTE estimate; reject the step if it exceeds tolerance.
+        err = 0.0
+        if adaptive and method == "trapezoidal" and prev_prev is not None and h_prev is not None:
+            x_pred = previous + (h / h_prev) * (previous - prev_prev)
+            err = _lte_error(x, x_pred, settings.reltol, settings.abstol)
+            if err > 1.0:
+                h = h * max(0.2, 0.9 * err ** (-1 / 3))
+                continue  # reject and retry with a smaller step
+
+        # Accept the step.
+        t = t_next
+        prev_prev = previous
         previous = x
+        h_prev = h
         times.append(float(t))
         for node, idx in node_index.items():
             node_hist[node].append(float(x[idx]))
 
-        # Update dynamic state (trapezoidal update)
+        # Update dynamic state (trapezoidal/BE companion update).
         for el in elements:
             a = _idx(el.node_a, node_index)
             b = _idx(el.node_b, node_index)
@@ -94,8 +135,7 @@ def transient_sim(
                 branch_hist[el.id].append(current)
 
             elif el.type == "resistor":
-                i = (va_new - vb_new) / el.value
-                branch_hist[el.id].append(float(i))
+                branch_hist[el.id].append(float((va_new - vb_new) / el.value))
 
             elif el.type == "voltage_source":
                 pass  # filled below
@@ -106,5 +146,18 @@ def transient_sim(
         for k, el in enumerate(v_sources):
             branch_hist[el.id].append(float(x[n + k]))
 
+        # Reset the predictor history after a discontinuity (Euler restart).
+        if method == "euler":
+            prev_prev = None
+
+        # Choose the next step size; never exceed the user's maximum step.
+        if adaptive and err > 0.0:
+            h = h * min(2.0, max(0.2, 0.9 * err ** (-1 / 3)))
+        else:
+            h = settings.t_step
+        h = min(h, settings.t_step)
+
+        while bp_idx < len(breakpoints) and breakpoints[bp_idx] <= t:
+            bp_idx += 1
 
     return times, node_hist, branch_hist

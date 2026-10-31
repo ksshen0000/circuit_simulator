@@ -95,6 +95,8 @@ class TransientSettings(BaseModel):
     t_step: float = Field(gt=0)
     t_start: float = 0.0
     method: Literal["euler", "trapezoidal"] = "trapezoidal"
+    reltol: float = Field(default=1e-3, gt=0)
+    abstol: float = Field(default=1e-9, gt=0)
 
     @model_validator(mode="after")
     def validate_range(self):

@@ -94,6 +94,19 @@ class ComplexCircuits(unittest.TestCase):
         self.assertGreater(output[-500:].max(), 9)
         self.assertLess(output[-500:].min(), -9)
 
+    def test_adaptive_transient_uses_fewer_points_for_looser_tolerance(self):
+        elements = [part('voltage_source', 'V', 'in', 'GND', 1, source_waveform='step'),
+                    part('resistor', 'R', 'in', 'mid', 10),
+                    part('inductor', 'L', 'mid', 'out', .01),
+                    part('capacitor', 'C', 'out', 'GND', 1e-6)]
+        loose = run(elements, mode='transient', t_step=1e-3, t_stop=.02, reltol=1e-2)
+        tight = run(elements, mode='transient', t_step=1e-3, t_stop=.02, reltol=1e-6)
+        # Looser tolerance accepts larger steps, so it needs fewer time points.
+        self.assertLess(len(loose.x_values), len(tight.x_values))
+        # Both settle near the 1 V final value.
+        self.assertAlmostEqual(loose.node_voltages['out'][-1], 1.0, delta=0.05)
+        self.assertAlmostEqual(tight.node_voltages['out'][-1], 1.0, delta=0.02)
+
     def test_short_log_sweep_keeps_both_endpoints(self):
         elements = [part('voltage_source','V','in','GND',1), part('resistor','R','in','GND',1000)]
         result = run(elements, mode='ac', f_start=100, f_stop=101, points_per_decade=20)
