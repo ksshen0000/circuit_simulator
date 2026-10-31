@@ -12,6 +12,7 @@ def transient_sim(
     elements: list,
     node_index: dict[str, int],
     settings,
+    options=None,
 ) -> tuple[list[float], dict[str, list[float]], dict[str, list[float]]]:
     """Return (times, node_voltages_history, branch_currents_history)."""
     n = len(node_index)
@@ -20,7 +21,7 @@ def transient_sim(
     # DC operating point for initial conditions: evaluate sources at t_start - epsilon
     # so step sources at t_start=0 give 0V initial condition
     t_ic = np.nextafter(settings.t_start, -np.inf)
-    v0, j0 = dc_solve(elements, node_index, t=t_ic)
+    v0, j0 = dc_solve(elements, node_index, t=t_ic, options=options)
 
     # Build initial dynamic state from DC solution
     state: dict = {}
@@ -57,7 +58,7 @@ def transient_sim(
         source_values = jumps.get(t, {})
         A, z = build_mna_transient(elements, node_index, n, t, h, state, method, source_values)
         try:
-            x = solve(A, z, elements, node_index, state=state, h=h, initial=previous)
+            x = solve(A, z, elements, node_index, state=state, h=h, initial=previous, options=options)
         except ValueError as exc:
             raise ValueError(f"Transient failed at t={t:.12g} s (step={h:.12g} s): {exc}") from exc
         previous = x

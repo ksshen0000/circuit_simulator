@@ -4,7 +4,7 @@ from .mna import _eval_source, build_mna_dc
 from .opamp import output_current, solve
 
 
-def dc_solve(elements: list, node_index: dict[str, int], t: float | None = None) -> tuple[dict, dict]:
+def dc_solve(elements: list, node_index: dict[str, int], t: float | None = None, options=None) -> tuple[dict, dict]:
     """Return operating point using declared DC values.
 
     Passing an explicit time instead evaluates source waveforms for transient
@@ -15,7 +15,7 @@ def dc_solve(elements: list, node_index: dict[str, int], t: float | None = None)
 
     A, z = build_mna_dc(elements, node_index, n, t=t)
 
-    x = solve(A, z, elements, node_index)
+    x = solve(A, z, elements, node_index, options=options)
 
     node_voltages = {node: float(x[idx]) for node, idx in node_index.items()}
 

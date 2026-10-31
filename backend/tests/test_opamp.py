@@ -10,6 +10,7 @@ from app.models.netlist import NetlistElement as E
 from app.routers.simulation import _build_node_index, simulate
 from app.simulation.ac_analysis import ac_sweep
 from app.simulation.dc_analysis import dc_solve
+from app.simulation.opamp import SolverOptions, solve
 from app.simulation.transient import transient_sim
 
 
@@ -172,3 +173,24 @@ def test_opamp_dominant_pole_step():
     k = 100
     expected = 1e5 / (1 + 1e5) * (1 - math.exp(-2 * math.pi * 1000 * (1 + 1 / 1e5) * times[k]))
     assert v["out"][k] == pytest.approx(expected, abs=0.002)
+
+
+def test_solver_options_preserve_solution():
+    elements = amplifier()
+    idx = index(elements)
+    v_default, _ = dc_solve(elements, idx)
+    # Explicit default options must produce the same operating point as None.
+    v_opts, _ = dc_solve(elements, idx, options=SolverOptions())
+    assert v_opts["out"] == pytest.approx(v_default["out"], rel=1e-12)
+
+
+def test_solver_options_are_forwarded():
+    elements = amplifier()
+    idx = index(elements)
+    # solve() accepts options and returns a finite solution vector.
+    from app.simulation.mna import build_mna_dc
+    A, z = build_mna_dc(elements, idx, len(idx))
+    x = solve(A, z, elements, idx, options=SolverOptions(gmin_steps=0))
+    n_extra = sum(e.type in ("voltage_source", "opamp") for e in elements)
+    assert x.size == len(idx) + n_extra
+    assert all(math.isfinite(float(v)) for v in x)

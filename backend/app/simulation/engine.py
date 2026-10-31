@@ -22,7 +22,7 @@ def _build_node_index(elements: list, ground_node: str) -> dict[str, int]:
     return {node: idx for idx, node in enumerate(sorted(nodes))}
 
 
-def run_simulation(req: SimulateRequest) -> SimulationResult:
+def run_simulation(req: SimulateRequest, options=None) -> SimulationResult:
     non_ground = [e for e in req.elements if e.type != "ground"]
     if len({e.id for e in non_ground}) != len(non_ground):
         raise ValueError("Component IDs must be unique")
@@ -35,7 +35,7 @@ def run_simulation(req: SimulateRequest) -> SimulationResult:
     mode = req.settings.mode
 
     if mode == "dc":
-        node_v, branch_i = dc_solve(non_ground, node_index)
+        node_v, branch_i = dc_solve(non_ground, node_index, options=options)
         return SimulationResult(
             mode="dc",
             x_values=[0.0],
@@ -45,7 +45,7 @@ def run_simulation(req: SimulateRequest) -> SimulationResult:
 
     elif mode == "ac":
         freqs, nv_mag, nv_phase, bi_mag, bi_phase = ac_sweep(
-            non_ground, node_index, req.settings
+            non_ground, node_index, req.settings, options=options
         )
         nv_real = {k: [m * math.cos(math.radians(p))
                        for m, p in zip(nv_mag[k], nv_phase[k], strict=True)]
@@ -62,7 +62,7 @@ def run_simulation(req: SimulateRequest) -> SimulationResult:
         )
 
     elif mode == "transient":
-        times, nv, bi = transient_sim(non_ground, node_index, req.settings)
+        times, nv, bi = transient_sim(non_ground, node_index, req.settings, options=options)
         return SimulationResult(
             mode="transient",
             x_values=times,

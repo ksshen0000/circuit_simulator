@@ -11,11 +11,12 @@ def ac_sweep(
     elements: list,
     node_index: dict[str, int],
     settings,
+    options=None,
 ) -> tuple[list[float], dict[str, list[float]], dict[str, list[float]], dict[str, list[float]], dict[str, list[float]]]:
     """Return (freqs, node_mag, node_phase, branch_mag, branch_phase)."""
     # Small-signal analysis is only meaningful around an unsaturated bias point.
     if any(e.type == "opamp" for e in elements):
-        bias, currents = dc_solve(elements, node_index)
+        bias, currents = dc_solve(elements, node_index, options=options)
         for el in elements:
             if el.type == "opamp":
                 internal = bias.get(el.node_out, 0) - el.output_resistance * currents[el.id]
@@ -42,7 +43,7 @@ def ac_sweep(
         omega = 2 * np.pi * f
         A, z = build_mna_ac(elements, node_index, n, omega)
 
-        x = solve(A, z, elements, node_index, omega=omega)
+        x = solve(A, z, elements, node_index, omega=omega, options=options)
 
         for node, idx in node_index.items():
             node_mag[node].append(float(np.abs(x[idx])))

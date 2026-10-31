@@ -2,13 +2,27 @@
 
 Branch current is positive into the output; input bias currents are not modeled.
 The dominant pole uses backward Euler in transient, including slew limiting.
-The Newton Jacobian is assembled sparsely and solved with SuperLU.
+The Newton Jacobian is assembled sparsely and solved with SuperLU. A gmin-stepping
+continuation is available as a fallback for hard-to-converge operating points.
 """
+from dataclasses import dataclass
+
 import numpy as np
 import scipy.sparse as sp
 
 from .matrix import solve_linear
 from .mna import _idx
+
+
+@dataclass(frozen=True)
+class SolverOptions:
+    """Newton convergence tolerances and continuation options."""
+
+    abstol: float = 1e-9  # absolute residual tolerance (inf-norm)
+    itl1: int = 100       # maximum Newton iterations
+    itl4: int = 40        # maximum damped backtracking steps
+    gmin: float = 1e-12   # final ground conductance used by gmin stepping
+    gmin_steps: int = 5   # continuation steps (0 disables the fallback)
 
 
 def _stamp_coo(rows: list[int], cols: list[int], data: list, a: int, b: int, g) -> None:
@@ -30,7 +44,8 @@ def _stamp_coo(rows: list[int], cols: list[int], data: list, a: int, b: int, g) 
         data.append(-g)
 
 
-def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial=None):
+def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial=None, options=None):
+    opts = options or SolverOptions()
     devices = [e for e in elements if e.type == "opamp"]
     base = len(z)
     size = base + len(devices)
@@ -54,10 +69,10 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial
         const_cols.append(col)
         const_data.append(-el.output_resistance)
 
-    def system(x):
-        rows = const_rows.copy()
-        cols = const_cols.copy()
-        data = const_data.copy()
+    def build_system(x, base_rows, base_cols, base_data):
+        rows = base_rows.copy()
+        cols = base_cols.copy()
+        data = base_data.copy()
         target = rhs.copy()
         for k, el in enumerate(devices):
             a, b = _idx(el.node_a, node_index), _idx(el.node_b, node_index)
@@ -92,37 +107,53 @@ def solve(A, z, elements, node_index, *, omega=None, state=None, h=None, initial
         jac = sp.coo_matrix((data, (rows, cols)), shape=(size, size), dtype=A.dtype).tocsc()
         return jac, target
 
-    def linear_solve(jac, target):
+    def newton(gmin: float, x0: np.ndarray) -> np.ndarray:
+        rows = const_rows + list(range(base))
+        cols = const_cols + list(range(base))
+        data = const_data + [gmin] * base
+        x = x0.copy()
+        for _ in range(opts.itl1):
+            jac, target = build_system(x, rows, cols, data)
+            residual = jac @ x - target
+            candidate = solve_linear(jac, target)
+            # Check the actual piecewise system, not just its local linearization.
+            candidate_jac, candidate_rhs = build_system(candidate, rows, cols, data)
+            if np.linalg.norm(candidate_jac @ candidate - candidate_rhs, ord=np.inf) < opts.abstol:
+                return candidate
+            delta = candidate - x
+            norm = np.linalg.norm(residual, ord=np.inf) if size else 0
+            # Damped Newton prevents alternating between opposite saturation rails.
+            alpha = 1.0
+            for _ in range(opts.itl4):
+                trial = x + alpha * delta
+                trial_jac, trial_rhs = build_system(trial, rows, cols, data)
+                trial_norm = np.linalg.norm(trial_jac @ trial - trial_rhs, ord=np.inf)
+                if trial_norm < norm or trial_norm < opts.abstol:
+                    x = trial
+                    break
+                alpha *= 0.5
+            else:
+                raise ValueError("Opamp operating point did not converge; check feedback and rails")
+        raise ValueError("Opamp operating point did not converge")
+
+    x0 = np.zeros(size, dtype=A.dtype) if initial is None else np.asarray(initial, dtype=A.dtype).copy()
+    if x0.shape != (size,) or not np.all(np.isfinite(x0)):
+        raise ValueError("Invalid solver initial state")
+
+    if not devices or omega is not None:
+        jac, target = build_system(x0, const_rows, const_cols, const_data)
         return solve_linear(jac, target)
 
-    x = np.zeros(size, dtype=A.dtype) if initial is None else np.asarray(initial, dtype=A.dtype).copy()
-    if x.shape != (size,) or not np.all(np.isfinite(x)):
-        raise ValueError("Invalid solver initial state")
-    if not devices or omega is not None:
-        return linear_solve(*system(x))
-    for _ in range(100):
-        jac, target = system(x)
-        residual = jac @ x - target
-        candidate = linear_solve(jac, target)
-        # Check the actual piecewise system, not just its local linearization.
-        candidate_jac, candidate_rhs = system(candidate)
-        if np.linalg.norm(candidate_jac @ candidate - candidate_rhs, ord=np.inf) < 1e-9:
-            return candidate
-        delta = candidate - x
-        norm = np.linalg.norm(residual, ord=np.inf) if size else 0
-        # Damped Newton prevents alternating between opposite saturation rails.
-        alpha = 1.0
-        for _ in range(40):
-            trial = x + alpha * delta
-            trial_jac, trial_rhs = system(trial)
-            trial_norm = np.linalg.norm(trial_jac @ trial - trial_rhs, ord=np.inf)
-            if trial_norm < norm or trial_norm < 1e-9:
-                x = trial
-                break
-            alpha *= 0.5
-        else:
-            raise ValueError("Opamp operating point did not converge; check feedback and rails")
-    raise ValueError("Opamp operating point did not converge")
+    try:
+        return newton(0.0, x0)
+    except ValueError:
+        if opts.gmin_steps <= 0:
+            raise
+        # gmin continuation: start with a large ground conductance for easy
+        # convergence, then shrink it, reusing each solution as the next guess.
+        for step in range(opts.gmin_steps, 0, -1):
+            x0 = newton(opts.gmin * (10.0 ** step), x0)
+        return newton(opts.gmin, x0)
 
 
 def output_current(x, elements, el):
